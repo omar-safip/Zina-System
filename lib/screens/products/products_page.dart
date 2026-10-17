@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../database/database_helper.dart';
 import 'add_product_page.dart';
-import 'edit_product_page.dart';
-import 'stock_movements_page.dart';
+import 'edit_product_page.dart' as edit_product;
+import 'stock_movements_page.dart' as stock_movements;
 
 class ProductsPage extends StatefulWidget {
   const ProductsPage({super.key});
@@ -32,18 +32,14 @@ class _ProductsPageState extends State<ProductsPage> {
         orderBy: 'id DESC',
       );
 
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
       setState(() {
         _products = products;
         _isLoading = false;
       });
     } catch (e) {
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
       setState(() {
         _isLoading = false;
@@ -77,7 +73,6 @@ class _ProductsPageState extends State<ProductsPage> {
             style: TextStyle(fontWeight: FontWeight.bold),
           ),
         ),
-
         body: RefreshIndicator(
           onRefresh: _loadProducts,
           child: SingleChildScrollView(
@@ -87,9 +82,7 @@ class _ProductsPageState extends State<ProductsPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildHeader(),
-
                 const SizedBox(height: 24),
-
                 if (_isLoading)
                   _buildLoading()
                 else if (_products.isEmpty)
@@ -100,7 +93,6 @@ class _ProductsPageState extends State<ProductsPage> {
             ),
           ),
         ),
-
         floatingActionButton: FloatingActionButton.extended(
           onPressed: _openAddProduct,
           icon: const Icon(Icons.add),
@@ -122,9 +114,7 @@ class _ProductsPageState extends State<ProductsPage> {
                 'المنتجات والمخزون',
                 style: TextStyle(fontSize: 23, fontWeight: FontWeight.bold),
               ),
-
               const SizedBox(height: 8),
-
               Text(
                 'إدارة المنتجات والكميات والأسعار',
                 style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
@@ -165,24 +155,18 @@ class _ProductsPageState extends State<ProductsPage> {
             size: 60,
             color: Colors.grey.shade400,
           ),
-
           const SizedBox(height: 15),
-
           const Text(
             'لا توجد منتجات حتى الآن',
             style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
           ),
-
           const SizedBox(height: 8),
-
           Text(
             'اضغط على زر "إضافة منتج" لإضافة أول منتج.',
             textAlign: TextAlign.center,
             style: TextStyle(color: Colors.grey.shade600),
           ),
-
           const SizedBox(height: 20),
-
           ElevatedButton.icon(
             onPressed: _openAddProduct,
             icon: const Icon(Icons.add),
@@ -194,11 +178,7 @@ class _ProductsPageState extends State<ProductsPage> {
   }
 
   Widget _buildProductsList() {
-    return Column(
-      children: _products.map((product) {
-        return _buildProductCard(product);
-      }).toList(),
-    );
+    return Column(children: _products.map(_buildProductCard).toList());
   }
 
   Widget _buildProductCard(Map<String, dynamic> product) {
@@ -206,11 +186,8 @@ class _ProductsPageState extends State<ProductsPage> {
     final code = product['code']?.toString() ?? '-';
 
     final purchasePrice = _toDouble(product['purchase_price']);
-
     final sellingPrice = _toDouble(product['selling_price']);
-
     final quantity = _toDouble(product['stock_quantity']);
-
     final minQuantity = _toDouble(product['min_stock_quantity']);
 
     final isLowStock = quantity <= minQuantity;
@@ -230,6 +207,7 @@ class _ProductsPageState extends State<ProductsPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
                 width: 48,
@@ -243,9 +221,7 @@ class _ProductsPageState extends State<ProductsPage> {
                   color: Color(0xFF1E4FA3),
                 ),
               ),
-
               const SizedBox(width: 12),
-
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -265,58 +241,78 @@ class _ProductsPageState extends State<ProductsPage> {
                         color: Colors.grey.shade600,
                       ),
                     ),
+                    const SizedBox(height: 8),
+                    if (isLowStock)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          'مخزون منخفض',
+                          style: TextStyle(
+                            color: Colors.orange.shade800,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
-
-              if (isLowStock)
-                Container(
-                  margin: const EdgeInsets.only(left: 6),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 5,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    'مخزون منخفض',
-                    style: TextStyle(
-                      color: Colors.orange.shade800,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
+              PopupMenuButton<String>(
+                tooltip: 'إجراءات المنتج',
+                onSelected: (value) {
+                  switch (value) {
+                    case 'edit':
+                      _openEditProduct(product);
+                      break;
+                    case 'deactivate':
+                      _deactivateProduct(product);
+                      break;
+                    case 'stock':
+                      _openStockMovements(product);
+                      break;
+                  }
+                },
+                itemBuilder: (context) => const [
+                  PopupMenuItem(
+                    value: 'edit',
+                    child: ListTile(
+                      leading: Icon(Icons.edit_outlined),
+                      title: Text('تعديل المنتج'),
+                      contentPadding: EdgeInsets.zero,
                     ),
                   ),
-                ),
-
-              IconButton(
-                tooltip: 'تعديل المنتج',
-                onPressed: () => _openEditProduct(product),
-                icon: const Icon(Icons.edit_outlined, color: Color(0xFF1E4FA3)),
-              ),
-              IconButton(
-                tooltip: 'تعطيل المنتج',
-                onPressed: () => _deactivateProduct(product),
-                icon: Icon(Icons.delete_outline, color: Colors.red.shade600),
-              ),
-              IconButton(
-                tooltip: 'حركة المخزون',
-                onPressed: () => _openStockMovements(product),
-                icon: const Icon(
-                  Icons.swap_vert_circle_outlined,
-                  color: Color(0xFF1E4FA3),
-                ),
+                  PopupMenuItem(
+                    value: 'stock',
+                    child: ListTile(
+                      leading: Icon(Icons.swap_vert_circle_outlined),
+                      title: Text('حركة المخزون'),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'deactivate',
+                    child: ListTile(
+                      leading: Icon(Icons.delete_outline, color: Colors.red),
+                      title: Text('تعطيل المنتج'),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                ],
+                icon: const Icon(Icons.more_vert),
               ),
             ],
           ),
 
           const SizedBox(height: 16),
-
           const Divider(height: 1),
-
           const SizedBox(height: 14),
-
           Row(
             children: [
               Expanded(
@@ -325,7 +321,6 @@ class _ProductsPageState extends State<ProductsPage> {
                   '${_formatNumber(purchasePrice)} ريال',
                 ),
               ),
-
               Expanded(
                 child: _buildInfo(
                   'سعر البيع',
@@ -334,13 +329,10 @@ class _ProductsPageState extends State<ProductsPage> {
               ),
             ],
           ),
-
           const SizedBox(height: 14),
-
           Row(
             children: [
               Expanded(child: _buildInfo('الكمية', _formatNumber(quantity))),
-
               Expanded(
                 child: _buildInfo('الحد الأدنى', _formatNumber(minQuantity)),
               ),
@@ -359,9 +351,7 @@ class _ProductsPageState extends State<ProductsPage> {
           title,
           style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
         ),
-
         const SizedBox(height: 4),
-
         Text(
           value,
           style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
@@ -371,9 +361,7 @@ class _ProductsPageState extends State<ProductsPage> {
   }
 
   double _toDouble(dynamic value) {
-    if (value == null) {
-      return 0;
-    }
+    if (value == null) return 0;
 
     if (value is num) {
       return value.toDouble();
@@ -394,7 +382,7 @@ class _ProductsPageState extends State<ProductsPage> {
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => EditProductPage(product: product),
+        builder: (context) => edit_product.EditProductPage(product: product),
       ),
     );
 
@@ -406,13 +394,11 @@ class _ProductsPageState extends State<ProductsPage> {
   Future<void> _deactivateProduct(Map<String, dynamic> product) async {
     final productId = product['id'];
 
-    if (productId == null) {
-      return;
-    }
+    if (productId == null) return;
 
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
           title: const Text('تعطيل المنتج'),
           content: Text(
@@ -422,15 +408,11 @@ class _ProductsPageState extends State<ProductsPage> {
           ),
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.pop(context, false);
-              },
+              onPressed: () => Navigator.pop(dialogContext, false),
               child: const Text('إلغاء'),
             ),
             ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context, true);
-              },
+              onPressed: () => Navigator.pop(dialogContext, true),
               child: const Text('تعطيل'),
             ),
           ],
@@ -438,33 +420,35 @@ class _ProductsPageState extends State<ProductsPage> {
       },
     );
 
-    if (confirmed != true) {
-      return;
-    }
+    if (confirmed != true || !mounted) return;
 
     try {
       final db = await DatabaseHelper.instance.database;
 
-      await db.update(
+      final updatedCount = await db.update(
         'products',
         {'is_active': 0, 'updated_at': DateTime.now().toIso8601String()},
-        where: 'id = ?',
-        whereArgs: [productId],
+        where: 'id = ? AND is_active = ?',
+        whereArgs: [productId, 1],
       );
+
+      if (!mounted) return;
 
       await _loadProducts();
 
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('تم تعطيل المنتج بنجاح')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            updatedCount > 0
+                ? 'تم تعطيل المنتج بنجاح'
+                : 'المنتج معطّل بالفعل أو لم يعد موجودًا',
+          ),
+        ),
+      );
     } catch (e) {
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
       ScaffoldMessenger.of(
         context,
@@ -475,21 +459,20 @@ class _ProductsPageState extends State<ProductsPage> {
   Future<void> _openStockMovements(Map<String, dynamic> product) async {
     final productId = product['id'];
 
-    if (productId == null) {
-      return;
-    }
+    if (productId == null) return;
 
-    final result = await Navigator.push(
+    await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => StockMovementsPage(
+        builder: (context) => stock_movements.StockMovementsPage(
           productId: productId as int,
           productName: product['name']?.toString() ?? '-',
         ),
       ),
     );
 
-    if (result == true) {
+    // تحديث المنتجات عند الرجوع من صفحة حركة المخزون.
+    if (mounted) {
       await _loadProducts();
     }
   }

@@ -1,18 +1,25 @@
 import 'package:flutter/material.dart';
 import '../../database/database_helper.dart';
 
-class MarketersPage extends StatefulWidget {
-  const MarketersPage({super.key});
+class MarketerTreePage extends StatefulWidget {
+  const MarketerTreePage({super.key});
 
   @override
-  State<MarketersPage> createState() => _MarketersPageState();
+  State<MarketerTreePage> createState() => _MarketersPageState();
 }
 
-class _MarketersPageState extends State<MarketersPage> {
+class _MarketersPageState extends State<MarketerTreePage> {
   final DatabaseHelper _database = DatabaseHelper.instance;
 
   List<Map<String, dynamic>> _marketers = [];
+  final Set<int> _expandedMarketers = {};
   bool _isLoading = true;
+
+  int? _toInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    return int.tryParse(value.toString());
+  }
 
   @override
   void initState() {
@@ -21,9 +28,9 @@ class _MarketersPageState extends State<MarketersPage> {
   }
 
   Future<void> _loadMarketers() async {
-    setState(() {
-      _isLoading = true;
-    });
+    if (mounted) {
+      setState(() => _isLoading = true);
+    }
 
     try {
       final db = await _database.database;
@@ -38,27 +45,38 @@ class _MarketersPageState extends State<MarketersPage> {
           marketers.is_active,
           marketers.created_at,
           marketers.updated_at,
-          codes.code
+          (
+            SELECT codes.code
+            FROM codes
+            WHERE codes.marketer_id = marketers.id
+              AND codes.is_active = 1
+            ORDER BY codes.id DESC
+            LIMIT 1
+          ) AS code
         FROM marketers
-        LEFT JOIN codes
-          ON marketers.id = codes.marketer_id
-          AND codes.is_active = 1
         WHERE marketers.is_active = 1
         ORDER BY marketers.id DESC
       ''');
 
       if (!mounted) return;
 
+      final activeIds = marketers
+          .map((item) => _toInt(item['id']))
+          .whereType<int>()
+          .toSet();
+
       setState(() {
         _marketers = marketers;
+
+        // إزالة الفروع المفتوحة التي لم تعد موجودة.
+        _expandedMarketers.removeWhere((id) => !activeIds.contains(id));
+
         _isLoading = false;
       });
     } catch (e) {
       if (!mounted) return;
 
-      setState(() {
-        _isLoading = false;
-      });
+      setState(() => _isLoading = false);
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('حدث خطأ أثناء تحميل المسوقين: $e')),
@@ -69,9 +87,7 @@ class _MarketersPageState extends State<MarketersPage> {
   Future<void> _openAddMarketer() async {
     final result = await showDialog<bool>(
       context: context,
-      builder: (context) {
-        return _MarketerDialog(marketers: _marketers);
-      },
+      builder: (context) => _MarketerDialog(marketers: _marketers),
     );
 
     if (result == true) {
@@ -82,9 +98,8 @@ class _MarketersPageState extends State<MarketersPage> {
   Future<void> _openEditMarketer(Map<String, dynamic> marketer) async {
     final result = await showDialog<bool>(
       context: context,
-      builder: (context) {
-        return _MarketerDialog(marketers: _marketers, marketer: marketer);
-      },
+      builder: (context) =>
+          _MarketerDialog(marketers: _marketers, marketer: marketer),
     );
 
     if (result == true) {
@@ -93,32 +108,28 @@ class _MarketersPageState extends State<MarketersPage> {
   }
 
   Future<void> _deactivateMarketer(Map<String, dynamic> marketer) async {
-    final marketerId = marketer['id'];
-
+    final marketerId = _toInt(marketer['id']);
     if (marketerId == null) return;
 
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('تعطيل المسوق'),
-          content: Text(
-            'هل تريد تعطيل المسوق "${marketer['name']}"؟\n\n'
-            'لن يظهر المسوق في القائمة الحالية، '
-            'لكن بياناته ستبقى محفوظة.',
+      builder: (context) => AlertDialog(
+        title: const Text('تعطيل المسوق'),
+        content: Text(
+          'هل تريد تعطيل المسوق "${marketer['name']}"؟\n\n'
+          'ستبقى بياناته محفوظة في قاعدة البيانات.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('إلغاء'),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('إلغاء'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('تعطيل'),
-            ),
-          ],
-        );
-      },
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('تعطيل'),
+          ),
+        ],
+      ),
     );
 
     if (confirmed != true) return;
@@ -149,12 +160,239 @@ class _MarketersPageState extends State<MarketersPage> {
     }
   }
 
+  List<Map<String, dynamic>> _childrenOf(int parentId) {
+    return _marketers.where((marketer) {
+      return _toInt(marketer['parent_id']) == parentId;
+    }).toList();
+  }
+
+  List<Map<String, dynamic>> get _rootMarketers {
+    final activeIds = _marketers
+        .map((marketer) => _toInt(marketer['id']))
+        .whereType<int>()
+        .toSet();
+
+    final roots = _marketers.where((marketer) {
+      final parentId = _toInt(marketer['parent_id']);
+
+      return parentId == null || !activeIds.contains(parentId);
+    }).toList();
+
+    // في حالة وجود بيانات قديمة تحتوي على علاقة دائرية،
+    // نعرض المسوقين بدل ترك الشاشة فارغة.
+    return roots.isEmpty && _marketers.isNotEmpty ? _marketers : roots;
+  }
+
+  void _toggleExpanded(int marketerId) {
+    setState(() {
+      if (_expandedMarketers.contains(marketerId)) {
+        _expandedMarketers.remove(marketerId);
+      } else {
+        _expandedMarketers.add(marketerId);
+      }
+    });
+  }
+
+  Widget _buildTreeNode(
+    Map<String, dynamic> marketer, {
+    int depth = 0,
+    Set<int> ancestors = const {},
+  }) {
+    final id = _toInt(marketer['id']);
+    if (id == null) return const SizedBox.shrink();
+
+    // منع التكرار المرئي إذا احتوت البيانات القديمة على دورة.
+    if (ancestors.contains(id)) {
+      return const SizedBox.shrink();
+    }
+
+    final children = _childrenOf(id);
+    final hasChildren = children.any(
+      (child) => !ancestors.contains(_toInt(child['id'])),
+    );
+    final isExpanded = _expandedMarketers.contains(id);
+
+    final name = marketer['name']?.toString() ?? '-';
+    final phone = marketer['phone']?.toString() ?? '';
+    final code = marketer['code']?.toString() ?? '';
+    final commission = (marketer['commission_rate'] as num?)?.toDouble() ?? 0;
+
+    final nextAncestors = <int>{...ancestors, id};
+
+    return Padding(
+      padding: EdgeInsets.only(right: depth == 0 ? 0 : 18, bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Card(
+            margin: EdgeInsets.zero,
+            elevation: 1,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(
+                color: depth == 0
+                    ? const Color(0xFF1E4FA3).withValues(alpha: 0.25)
+                    : Colors.grey.withValues(alpha: 0.18),
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (hasChildren)
+                    IconButton(
+                      tooltip: isExpanded ? 'طيّ الفرع' : 'عرض التابعين',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => _toggleExpanded(id),
+                      icon: Icon(
+                        isExpanded
+                            ? Icons.keyboard_arrow_down
+                            : Icons.keyboard_arrow_left,
+                        color: const Color(0xFF1E4FA3),
+                      ),
+                    )
+                  else
+                    const SizedBox(width: 40),
+                  CircleAvatar(
+                    backgroundColor: depth == 0
+                        ? const Color(0xFF1E4FA3)
+                        : const Color(0xFFEAF1FF),
+                    foregroundColor: depth == 0
+                        ? Colors.white
+                        : const Color(0xFF1E4FA3),
+                    child: Text(
+                      name.isNotEmpty ? name.characters.first : '?',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        if (phone.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          _InfoRow(icon: Icons.phone_outlined, text: phone),
+                        ],
+                        const SizedBox(height: 4),
+                        _InfoRow(
+                          icon: Icons.qr_code_2_outlined,
+                          text: code.isEmpty ? 'بدون كود' : 'الكود: $code',
+                        ),
+                        const SizedBox(height: 4),
+                        _InfoRow(
+                          icon: Icons.percent,
+                          text: 'العمولة: ${commission.toStringAsFixed(2)}%',
+                        ),
+                        if (hasChildren) ...[
+                          const SizedBox(height: 5),
+                          Text(
+                            'عدد المسوقين التابعين: ${children.length}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  PopupMenuButton<String>(
+                    tooltip: 'إجراءات المسوق',
+                    onSelected: (value) {
+                      if (value == 'edit') {
+                        _openEditMarketer(marketer);
+                      } else if (value == 'deactivate') {
+                        _deactivateMarketer(marketer);
+                      }
+                    },
+                    itemBuilder: (context) => const [
+                      PopupMenuItem(
+                        value: 'edit',
+                        child: Row(
+                          children: [
+                            Icon(Icons.edit_outlined),
+                            SizedBox(width: 8),
+                            Text('تعديل'),
+                          ],
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'deactivate',
+                        child: Row(
+                          children: [
+                            Icon(Icons.delete_outline, color: Colors.red),
+                            SizedBox(width: 8),
+                            Text('تعطيل'),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (hasChildren && isExpanded)
+            ...children.map(
+              (child) => _buildTreeNode(
+                child,
+                depth: depth + 1,
+                ancestors: nextAncestors,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  void _expandAll() {
+    setState(() {
+      _expandedMarketers.addAll(
+        _marketers
+            .where(
+              (marketer) =>
+                  _childrenOf(_toInt(marketer['id']) ?? -1).isNotEmpty,
+            )
+            .map((marketer) => _toInt(marketer['id']))
+            .whereType<int>(),
+      );
+    });
+  }
+
+  void _collapseAll() {
+    setState(() => _expandedMarketers.clear());
+  }
+
   @override
   Widget build(BuildContext context) {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        appBar: AppBar(title: const Text('المسوقون')),
+        appBar: AppBar(
+          title: const Text('شجرة المسوقين'),
+          actions: [
+            IconButton(
+              tooltip: 'توسيع الفروع',
+              onPressed: _marketers.isEmpty ? null : _expandAll,
+              icon: const Icon(Icons.account_tree_outlined),
+            ),
+            IconButton(
+              tooltip: 'طيّ الفروع',
+              onPressed: _collapseAll,
+              icon: const Icon(Icons.unfold_less),
+            ),
+            const SizedBox(width: 8),
+          ],
+        ),
         floatingActionButton: FloatingActionButton.extended(
           onPressed: _openAddMarketer,
           icon: const Icon(Icons.person_add_alt_1),
@@ -166,14 +404,37 @@ class _MarketersPageState extends State<MarketersPage> {
             ? _buildEmptyState()
             : RefreshIndicator(
                 onRefresh: _loadMarketers,
-                child: ListView.builder(
+                child: ListView(
                   padding: const EdgeInsets.all(16),
-                  itemCount: _marketers.length,
-                  itemBuilder: (context, index) {
-                    final marketer = _marketers[index];
-
-                    return _buildMarketerCard(marketer);
-                  },
+                  children: [
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 16),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEAF1FF),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.info_outline,
+                            color: Color(0xFF1E4FA3),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'إجمالي المسوقين النشطين: ${_marketers.length}. '
+                              'اضغط السهم لعرض المسوقين التابعين.',
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    ..._rootMarketers.map(
+                      (marketer) => _buildTreeNode(marketer),
+                    ),
+                  ],
                 ),
               ),
       ),
@@ -197,120 +458,6 @@ class _MarketersPageState extends State<MarketersPage> {
             style: TextStyle(color: Colors.grey.shade600),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildMarketerCard(Map<String, dynamic> marketer) {
-    final name = marketer['name']?.toString() ?? '-';
-    final phone = marketer['phone']?.toString() ?? '';
-    final code = marketer['code']?.toString();
-    final commission = (marketer['commission_rate'] as num?)?.toDouble() ?? 0;
-
-    final parentId = marketer['parent_id'];
-
-    String? parentName;
-
-    if (parentId != null) {
-      for (final item in _marketers) {
-        if (item['id'] == parentId) {
-          parentName = item['name']?.toString();
-          break;
-        }
-      }
-    }
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 1,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            CircleAvatar(
-              radius: 25,
-              child: Text(
-                name.isNotEmpty ? name.characters.first : '?',
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    name,
-                    style: const TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-
-                  if (phone.isNotEmpty)
-                    _InfoRow(icon: Icons.phone_outlined, text: phone),
-
-                  _InfoRow(
-                    icon: Icons.qr_code_2_outlined,
-                    text: code == null || code.isEmpty
-                        ? 'بدون كود'
-                        : 'الكود: $code',
-                  ),
-
-                  _InfoRow(
-                    icon: Icons.percent,
-                    text: 'العمولة: ${commission.toStringAsFixed(2)}%',
-                  ),
-
-                  if (parentName != null)
-                    _InfoRow(
-                      icon: Icons.account_tree_outlined,
-                      text: 'المسوق الأب: $parentName',
-                    ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            PopupMenuButton<String>(
-              onSelected: (value) {
-                if (value == 'edit') {
-                  _openEditMarketer(marketer);
-                } else if (value == 'deactivate') {
-                  _deactivateMarketer(marketer);
-                }
-              },
-              itemBuilder: (context) {
-                return const [
-                  PopupMenuItem(
-                    value: 'edit',
-                    child: Row(
-                      children: [
-                        Icon(Icons.edit_outlined),
-                        SizedBox(width: 10),
-                        Text('تعديل'),
-                      ],
-                    ),
-                  ),
-                  PopupMenuItem(
-                    value: 'deactivate',
-                    child: Row(
-                      children: [
-                        Icon(Icons.delete_outline),
-                        SizedBox(width: 10),
-                        Text('تعطيل'),
-                      ],
-                    ),
-                  ),
-                ];
-              },
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -339,6 +486,31 @@ class _MarketerDialogState extends State<_MarketerDialog> {
 
   bool get _isEditing => widget.marketer != null;
 
+  int? _toInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    return int.tryParse(value.toString());
+  }
+
+  Set<int> _descendantIds(int marketerId) {
+    final descendants = <int>{};
+
+    void visit(int parentId) {
+      for (final item in widget.marketers) {
+        if (_toInt(item['parent_id']) == parentId) {
+          final childId = _toInt(item['id']);
+
+          if (childId != null && descendants.add(childId)) {
+            visit(childId);
+          }
+        }
+      }
+    }
+
+    visit(marketerId);
+    return descendants;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -347,21 +519,13 @@ class _MarketerDialogState extends State<_MarketerDialog> {
       final marketer = widget.marketer!;
 
       _nameController.text = marketer['name']?.toString() ?? '';
-
       _phoneController.text = marketer['phone']?.toString() ?? '';
-
       _codeController.text = marketer['code']?.toString() ?? '';
 
       _commissionController.text =
           ((marketer['commission_rate'] as num?)?.toDouble() ?? 0).toString();
 
-      final parentId = marketer['parent_id'];
-
-      if (parentId != null) {
-        _selectedParentId = parentId is int
-            ? parentId
-            : int.tryParse(parentId.toString());
-      }
+      _selectedParentId = _toInt(marketer['parent_id']);
     } else {
       _commissionController.text = '0';
     }
@@ -373,29 +537,26 @@ class _MarketerDialogState extends State<_MarketerDialog> {
     _phoneController.dispose();
     _codeController.dispose();
     _commissionController.dispose();
-
     super.dispose();
   }
 
   List<Map<String, dynamic>> get _parentOptions {
-    final currentId = widget.marketer?['id'];
+    final currentId = _toInt(widget.marketer?['id']);
+    final forbiddenIds = <int>{};
+
+    if (currentId != null) {
+      forbiddenIds.add(currentId);
+      forbiddenIds.addAll(_descendantIds(currentId));
+    }
 
     return widget.marketers.where((marketer) {
-      final id = marketer['id'];
-
-      // لا تسمح للمسوق باختيار نفسه كأب
-      if (currentId != null && id == currentId) {
-        return false;
-      }
-
-      return true;
+      final id = _toInt(marketer['id']);
+      return id != null && !forbiddenIds.contains(id);
     }).toList();
   }
 
   Future<void> _save() async {
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
+    if (!_formKey.currentState!.validate()) return;
 
     final name = _nameController.text.trim();
     final phone = _phoneController.text.trim();
@@ -411,18 +572,28 @@ class _MarketerDialogState extends State<_MarketerDialog> {
       return;
     }
 
-    setState(() {
-      _isSaving = true;
-    });
+    final currentId = _toInt(widget.marketer?['id']);
+
+    if (currentId != null &&
+        (_selectedParentId == currentId ||
+            _descendantIds(currentId).contains(_selectedParentId))) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('لا يمكن اختيار المسوق نفسه أو أحد أبنائه كمسوق أب'),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isSaving = true);
 
     try {
       final db = await DatabaseHelper.instance.database;
-
       final now = DateTime.now().toIso8601String();
 
       await db.transaction((txn) async {
         if (_isEditing) {
-          final marketerId = widget.marketer!['id'];
+          final marketerId = currentId!;
 
           await txn.update(
             'marketers',
@@ -437,15 +608,27 @@ class _MarketerDialogState extends State<_MarketerDialog> {
             whereArgs: [marketerId],
           );
 
-          // حذف الكود القديم
-          await txn.delete(
+          // الحفاظ على سجل الأكواد غير النشطة.
+          await txn.update(
             'codes',
-            where: 'marketer_id = ?',
+            {'is_active': 0},
+            where: 'marketer_id = ? AND is_active = 1',
             whereArgs: [marketerId],
           );
 
-          // إضافة الكود الجديد إذا تم إدخاله
           if (code != null) {
+            final existingCode = await txn.query(
+              'codes',
+              columns: ['id'],
+              where: 'code = ? AND is_active = 1',
+              whereArgs: [code],
+              limit: 1,
+            );
+
+            if (existingCode.isNotEmpty) {
+              throw Exception('DUPLICATE_CODE');
+            }
+
             await txn.insert('codes', {
               'marketer_id': marketerId,
               'code': code,
@@ -454,6 +637,20 @@ class _MarketerDialogState extends State<_MarketerDialog> {
             });
           }
         } else {
+          if (code != null) {
+            final existingCode = await txn.query(
+              'codes',
+              columns: ['id'],
+              where: 'code = ? AND is_active = 1',
+              whereArgs: [code],
+              limit: 1,
+            );
+
+            if (existingCode.isNotEmpty) {
+              throw Exception('DUPLICATE_CODE');
+            }
+          }
+
           final marketerId = await txn.rawInsert(
             '''
             INSERT INTO marketers (
@@ -470,7 +667,6 @@ class _MarketerDialogState extends State<_MarketerDialog> {
             [name, phone, _selectedParentId, commission, 1, now, now],
           );
 
-          // إضافة الكود فقط إذا تم إدخاله
           if (code != null) {
             await txn.insert('codes', {
               'marketer_id': marketerId,
@@ -483,20 +679,17 @@ class _MarketerDialogState extends State<_MarketerDialog> {
       });
 
       if (!mounted) return;
-
       Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
 
-      setState(() {
-        _isSaving = false;
-      });
+      setState(() => _isSaving = false);
 
-      String message = 'حدث خطأ أثناء حفظ المسوق';
-
-      if (e.toString().contains('UNIQUE constraint failed')) {
-        message = 'هذا الكود مستخدم بالفعل لمسوق آخر';
-      }
+      final message =
+          e.toString().contains('DUPLICATE_CODE') ||
+              e.toString().contains('UNIQUE constraint failed')
+          ? 'هذا الكود مستخدم بالفعل لمسوق آخر'
+          : 'حدث خطأ أثناء حفظ المسوق: $e';
 
       ScaffoldMessenger.of(
         context,
@@ -508,149 +701,133 @@ class _MarketerDialogState extends State<_MarketerDialog> {
   Widget build(BuildContext context) {
     final parentOptions = _parentOptions;
 
-    return AlertDialog(
-      title: Text(_isEditing ? 'تعديل المسوق' : 'إضافة مسوق'),
-      content: SizedBox(
-        width: 500,
-        child: SingleChildScrollView(
-          child: Form(
-            key: _formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: _nameController,
-                  decoration: const InputDecoration(
-                    labelText: 'اسم المسوق',
-                    hintText: 'أدخل اسم المسوق',
-                    prefixIcon: Icon(Icons.person_outline),
-                  ),
-                  textInputAction: TextInputAction.next,
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'اسم المسوق مطلوب';
-                    }
-
-                    return null;
-                  },
-                ),
-
-                const SizedBox(height: 14),
-
-                TextFormField(
-                  controller: _phoneController,
-                  decoration: const InputDecoration(
-                    labelText: 'رقم الهاتف',
-                    hintText: 'اختياري',
-                    prefixIcon: Icon(Icons.phone_outlined),
-                  ),
-                  keyboardType: TextInputType.phone,
-                  textInputAction: TextInputAction.next,
-                ),
-
-                const SizedBox(height: 14),
-
-                TextFormField(
-                  controller: _codeController,
-                  decoration: const InputDecoration(
-                    labelText: 'كود المسوق',
-                    hintText: 'اختياري',
-                    prefixIcon: Icon(Icons.qr_code_2_outlined),
-                  ),
-                  textInputAction: TextInputAction.next,
-                ),
-
-                const SizedBox(height: 14),
-
-                DropdownButtonFormField<int?>(
-                  value: _selectedParentId,
-                  decoration: const InputDecoration(
-                    labelText: 'المسوق الأب',
-                    prefixIcon: Icon(Icons.account_tree_outlined),
-                  ),
-                  items: [
-                    const DropdownMenuItem<int?>(
-                      value: null,
-                      child: Text('بدون مسوق أب'),
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: AlertDialog(
+        title: Text(_isEditing ? 'تعديل المسوق' : 'إضافة مسوق'),
+        content: SizedBox(
+          width: 500,
+          child: SingleChildScrollView(
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    controller: _nameController,
+                    decoration: const InputDecoration(
+                      labelText: 'اسم المسوق',
+                      hintText: 'أدخل اسم المسوق',
+                      prefixIcon: Icon(Icons.person_outline),
                     ),
-                    ...parentOptions.map((parent) {
-                      final id = parent['id'];
-
-                      final parentId = id is int
-                          ? id
-                          : int.tryParse(id.toString());
-
-                      return DropdownMenuItem<int?>(
-                        value: parentId,
-                        child: Text(parent['name']?.toString() ?? '-'),
-                      );
-                    }),
-                  ],
-                  onChanged: _isSaving
-                      ? null
-                      : (value) {
-                          setState(() {
-                            _selectedParentId = value;
-                          });
-                        },
-                ),
-
-                const SizedBox(height: 14),
-
-                TextFormField(
-                  controller: _commissionController,
-                  decoration: const InputDecoration(
-                    labelText: 'نسبة العمولة',
-                    hintText: 'مثال: 5',
-                    prefixIcon: Icon(Icons.percent),
-                    suffixText: '%',
+                    textInputAction: TextInputAction.next,
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'اسم المسوق مطلوب';
+                      }
+                      return null;
+                    },
                   ),
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
+                  const SizedBox(height: 14),
+                  TextFormField(
+                    controller: _phoneController,
+                    decoration: const InputDecoration(
+                      labelText: 'رقم الهاتف',
+                      hintText: 'اختياري',
+                      prefixIcon: Icon(Icons.phone_outlined),
+                    ),
+                    keyboardType: TextInputType.phone,
+                    textInputAction: TextInputAction.next,
                   ),
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'نسبة العمولة مطلوبة';
-                    }
+                  const SizedBox(height: 14),
+                  TextFormField(
+                    controller: _codeController,
+                    decoration: const InputDecoration(
+                      labelText: 'كود المسوق',
+                      hintText: 'اختياري',
+                      prefixIcon: Icon(Icons.qr_code_2_outlined),
+                    ),
+                    textInputAction: TextInputAction.next,
+                  ),
+                  const SizedBox(height: 14),
+                  DropdownButtonFormField<int?>(
+                    value: _selectedParentId,
+                    decoration: const InputDecoration(
+                      labelText: 'المسوق الأب',
+                      prefixIcon: Icon(Icons.account_tree_outlined),
+                    ),
+                    items: [
+                      const DropdownMenuItem<int?>(
+                        value: null,
+                        child: Text('بدون مسوق أب'),
+                      ),
+                      ...parentOptions.map((parent) {
+                        final parentId = _toInt(parent['id']);
 
-                    final commission = double.tryParse(value.trim());
+                        return DropdownMenuItem<int?>(
+                          value: parentId,
+                          child: Text(parent['name']?.toString() ?? '-'),
+                        );
+                      }),
+                    ],
+                    onChanged: _isSaving
+                        ? null
+                        : (value) {
+                            setState(() => _selectedParentId = value);
+                          },
+                  ),
+                  const SizedBox(height: 14),
+                  TextFormField(
+                    controller: _commissionController,
+                    decoration: const InputDecoration(
+                      labelText: 'نسبة العمولة',
+                      hintText: 'مثال: 5',
+                      prefixIcon: Icon(Icons.percent),
+                      suffixText: '%',
+                    ),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'نسبة العمولة مطلوبة';
+                      }
 
-                    if (commission == null) {
-                      return 'أدخل رقمًا صحيحًا';
-                    }
+                      final commission = double.tryParse(value.trim());
 
-                    if (commission < 0 || commission > 100) {
-                      return 'النسبة يجب أن تكون بين 0 و100';
-                    }
+                      if (commission == null) {
+                        return 'أدخل رقمًا صحيحًا';
+                      }
 
-                    return null;
-                  },
-                ),
-              ],
+                      if (commission < 0 || commission > 100) {
+                        return 'النسبة يجب أن تكون بين 0 و100';
+                      }
+
+                      return null;
+                    },
+                  ),
+                ],
+              ),
             ),
           ),
         ),
+        actions: [
+          TextButton(
+            onPressed: _isSaving ? null : () => Navigator.pop(context, false),
+            child: const Text('إلغاء'),
+          ),
+          ElevatedButton(
+            onPressed: _isSaving ? null : _save,
+            child: _isSaving
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Text(_isEditing ? 'حفظ التعديلات' : 'إضافة'),
+          ),
+        ],
       ),
-      actions: [
-        TextButton(
-          onPressed: _isSaving
-              ? null
-              : () {
-                  Navigator.pop(context, false);
-                },
-          child: const Text('إلغاء'),
-        ),
-        ElevatedButton(
-          onPressed: _isSaving ? null : _save,
-          child: _isSaving
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : Text(_isEditing ? 'حفظ التعديلات' : 'إضافة'),
-        ),
-      ],
     );
   }
 }
@@ -664,15 +841,16 @@ class _InfoRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(top: 5),
+      padding: const EdgeInsets.only(top: 2),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 17, color: Colors.grey.shade600),
-          const SizedBox(width: 7),
+          Icon(icon, size: 16, color: Colors.grey.shade600),
+          const SizedBox(width: 6),
           Expanded(
             child: Text(
               text,
-              style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
             ),
           ),
         ],

@@ -61,8 +61,83 @@ class _EditProductPageState extends State<EditProductPage> {
     super.dispose();
   }
 
+  // ==================================================
+  // عرض رسائل للمستخدم
+  // ==================================================
+
+  void _showMessage(String message, {bool isError = false}) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: isError ? Colors.red.shade700 : null,
+        ),
+      );
+  }
+
+  // ==================================================
+  // تحويل الرقم والتحقق منه
+  // ==================================================
+
+  double? _parseNumber(String value) {
+    final normalized = value.trim().replaceAll(',', '.');
+    final number = double.tryParse(normalized);
+
+    if (number == null || !number.isFinite || number < 0) {
+      return null;
+    }
+
+    return number;
+  }
+
+  // ==================================================
+  // تحديث المنتج
+  // ==================================================
+
   Future<void> _updateProduct() async {
+    if (_isSaving) return;
+
+    FocusScope.of(context).unfocus();
+
     if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    final productIdValue = widget.product['id'];
+
+    if (productIdValue is! int) {
+      _showMessage('معرف المنتج غير صحيح', isError: true);
+      return;
+    }
+
+    final name = _nameController.text.trim();
+    final codeText = _codeController.text.trim();
+    final descriptionText = _descriptionController.text.trim();
+
+    final purchasePrice = _parseNumber(_purchasePriceController.text);
+
+    final sellingPrice = _parseNumber(_sellingPriceController.text);
+
+    final quantity = _parseNumber(_quantityController.text);
+
+    final minQuantity = _parseNumber(_minQuantityController.text);
+
+    if (name.isEmpty) {
+      _showMessage('اسم المنتج مطلوب', isError: true);
+      return;
+    }
+
+    if (purchasePrice == null ||
+        sellingPrice == null ||
+        quantity == null ||
+        minQuantity == null) {
+      _showMessage(
+        'تأكد من إدخال أسعار وكميات صحيحة وغير سالبة',
+        isError: true,
+      );
       return;
     }
 
@@ -72,61 +147,115 @@ class _EditProductPageState extends State<EditProductPage> {
 
     try {
       final db = await DatabaseHelper.instance.database;
+      final now = DateTime.now().toIso8601String();
 
-      final productId = widget.product['id'];
+      await db.transaction((txn) async {
+        // ----------------------------------------------
+        // التأكد من وجود المنتج وأنه نشط
+        // ----------------------------------------------
 
-      if (productId == null) {
-        throw Exception('معرف المنتج غير موجود');
-      }
+        final existingProducts = await txn.query(
+          'products',
+          columns: ['id', 'stock_quantity', 'is_active'],
+          where: 'id = ?',
+          whereArgs: [productIdValue],
+          limit: 1,
+        );
 
-      final name = _nameController.text.trim();
+        if (existingProducts.isEmpty) {
+          throw Exception('المنتج غير موجود في قاعدة البيانات');
+        }
 
-      final codeText = _codeController.text.trim();
-      final code = codeText.isEmpty ? null : codeText;
+        final existingProduct = existingProducts.first;
 
-      final descriptionText = _descriptionController.text.trim();
-      final description = descriptionText.isEmpty ? null : descriptionText;
+        if ((existingProduct['is_active'] as num?)?.toInt() != 1) {
+          throw Exception('لا يمكن تعديل منتج غير نشط');
+        }
 
-      final purchasePrice =
-          double.tryParse(_purchasePriceController.text.trim()) ?? 0;
+        // ----------------------------------------------
+        // التحقق من عدم تكرار كود المنتج
+        // ----------------------------------------------
 
-      final sellingPrice =
-          double.tryParse(_sellingPriceController.text.trim()) ?? 0;
+        if (codeText.isNotEmpty) {
+          final duplicateCodes = await txn.query(
+            'products',
+            columns: ['id'],
+            where: 'code = ? AND id != ?',
+            whereArgs: [codeText, productIdValue],
+            limit: 1,
+          );
 
-      final quantity = double.tryParse(_quantityController.text.trim()) ?? 0;
+          if (duplicateCodes.isNotEmpty) {
+            throw Exception('هذا الكود مستخدم بالفعل في منتج آخر');
+          }
+        }
 
-      final minQuantity =
-          double.tryParse(_minQuantityController.text.trim()) ?? 0;
+        // ----------------------------------------------
+        // قراءة الكمية الحالية من قاعدة البيانات
+        // ----------------------------------------------
 
-      await db.update(
-        'products',
-        {
-          'name': name,
-          'code': code,
-          'description': description,
-          'purchase_price': purchasePrice,
-          'selling_price': sellingPrice,
-          'stock_quantity': quantity,
-          'min_stock_quantity': minQuantity,
-          'updated_at': DateTime.now().toIso8601String(),
-        },
-        where: 'id = ?',
-        whereArgs: [productId],
-      );
+        final oldQuantityValue = existingProduct['stock_quantity'];
+
+        final oldQuantity = oldQuantityValue is num
+            ? oldQuantityValue.toDouble()
+            : double.tryParse(oldQuantityValue?.toString() ?? '') ?? 0;
+
+        if (!oldQuantity.isFinite || oldQuantity < 0) {
+          throw Exception('الكمية الحالية في قاعدة البيانات غير صحيحة');
+        }
+
+        // ----------------------------------------------
+        // تحديث بيانات المنتج
+        // ----------------------------------------------
+
+        final updatedRows = await txn.update(
+          'products',
+          {
+            'name': name,
+            'code': codeText.isEmpty ? null : codeText,
+            'description': descriptionText.isEmpty ? null : descriptionText,
+            'purchase_price': purchasePrice,
+            'selling_price': sellingPrice,
+            'stock_quantity': quantity,
+            'min_stock_quantity': minQuantity,
+            'updated_at': now,
+          },
+          where: 'id = ? AND is_active = 1',
+          whereArgs: [productIdValue],
+        );
+
+        if (updatedRows == 0) {
+          throw Exception('تعذر تحديث بيانات المنتج');
+        }
+
+        // ----------------------------------------------
+        // تسجيل حركة مخزون إذا تغيرت الكمية
+        // ----------------------------------------------
+
+        if (quantity != oldQuantity) {
+          final difference = quantity - oldQuantity;
+          final movementType = difference > 0 ? 'in' : 'out';
+          final movementQuantity = difference.abs();
+
+          await txn.insert('stock_movements', {
+            'product_id': productIdValue,
+            'type': movementType,
+            'quantity': movementQuantity,
+            'note': 'تعديل الكمية من صفحة تعديل المنتج',
+            'created_at': now,
+          });
+        }
+      });
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('تم تعديل المنتج بنجاح')));
+      _showMessage('تم تعديل المنتج وتحديث سجل المخزون بنجاح');
 
       Navigator.pop(context, true);
     } catch (e) {
-      if (!mounted) return;
+      final error = e.toString().replaceFirst('Exception: ', '');
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('حدث خطأ أثناء تعديل المنتج: $e')));
+      _showMessage('تعذر تعديل المنتج: $error', isError: true);
     } finally {
       if (mounted) {
         setState(() {
@@ -135,6 +264,10 @@ class _EditProductPageState extends State<EditProductPage> {
       }
     }
   }
+
+  // ==================================================
+  // الواجهة
+  // ==================================================
 
   @override
   Widget build(BuildContext context) {
@@ -267,12 +400,20 @@ class _EditProductPageState extends State<EditProductPage> {
     );
   }
 
+  // ==================================================
+  // عنوان القسم
+  // ==================================================
+
   Widget _buildSectionTitle(String title) {
     return Text(
       title,
       style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
     );
   }
+
+  // ==================================================
+  // حقول النص
+  // ==================================================
 
   Widget _buildTextField({
     required TextEditingController controller,
@@ -285,6 +426,7 @@ class _EditProductPageState extends State<EditProductPage> {
     return TextFormField(
       controller: controller,
       maxLines: maxLines,
+      enabled: !_isSaving,
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
@@ -302,6 +444,10 @@ class _EditProductPageState extends State<EditProductPage> {
     );
   }
 
+  // ==================================================
+  // حقول الأرقام
+  // ==================================================
+
   Widget _buildNumberField({
     required TextEditingController controller,
     required String label,
@@ -309,7 +455,11 @@ class _EditProductPageState extends State<EditProductPage> {
   }) {
     return TextFormField(
       controller: controller,
-      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      enabled: !_isSaving,
+      keyboardType: const TextInputType.numberWithOptions(
+        decimal: true,
+        signed: false,
+      ),
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
@@ -320,20 +470,20 @@ class _EditProductPageState extends State<EditProductPage> {
           return 'مطلوب';
         }
 
-        final number = double.tryParse(value.trim());
+        final number = _parseNumber(value);
 
         if (number == null) {
-          return 'رقم غير صحيح';
-        }
-
-        if (number < 0) {
-          return 'لا يمكن أن يكون سالبًا';
+          return 'أدخل رقمًا صحيحًا غير سالب';
         }
 
         return null;
       },
     );
   }
+
+  // ==================================================
+  // تنسيق الأرقام عند فتح الصفحة
+  // ==================================================
 
   String _formatInitialNumber(dynamic value) {
     if (value == null) {

@@ -13,79 +13,107 @@ class Sidebar extends StatelessWidget {
         child: Column(
           children: [
             _buildHeader(),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Column(
+                  children: [
+                    const SizedBox(height: 20),
+                    _menuItem(
+                      context: context,
+                      icon: Icons.dashboard_outlined,
+                      title: 'لوحة التحكم',
+                      selected: true,
+                      onTap: () {
+                        Navigator.of(context).pop();
+                      },
+                    ),
+                    _menuItem(
+                      context: context,
+                      icon: Icons.people_outline,
+                      title: 'المسوقون',
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        Navigator.pushNamed(context, AppRoutes.marketers);
+                      },
+                    ),
+                    _menuItem(
+                      context: context,
+                      icon: Icons.account_tree_outlined,
+                      title: 'شجرة المسوقين',
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        Navigator.pushNamed(context, AppRoutes.marketerTree);
+                      },
+                    ),
+                    _menuItem(
+                      context: context,
+                      icon: Icons.inventory_2_outlined,
+                      title: 'المنتجات والمخزون',
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        Navigator.pushNamed(context, AppRoutes.products);
+                      },
+                    ),
+                    _menuItem(
+                      context: context,
+                      icon: Icons.point_of_sale_outlined,
+                      title: 'المبيعات',
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        Navigator.pushNamed(context, AppRoutes.sales);
+                      },
+                    ),
+                    _menuItem(
+                      context: context,
+                      icon: Icons.receipt_long_outlined,
+                      title: 'سجل فواتير المبيعات',
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        Navigator.pushNamed(context, AppRoutes.salesHistory);
+                      },
+                    ),
+                    _menuItem(
+                      context: context,
+                      icon: Icons.bar_chart_outlined,
+                      title: 'التقارير',
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        Navigator.pushNamed(context, AppRoutes.reports);
+                      },
+                    ),
 
-            const SizedBox(height: 20),
+                    // سجل التدقيق
+                    _menuItem(
+                      context: context,
+                      icon: Icons.manage_history_outlined,
+                      title: 'سجل التدقيق',
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        Navigator.pushNamed(context, AppRoutes.auditLogs);
+                      },
+                    ),
 
-            _menuItem(
-              context: context,
-              icon: Icons.dashboard_outlined,
-              title: 'لوحة التحكم',
-              selected: true,
-              onTap: () {
-                Navigator.of(context).pop();
-              },
+                    _menuItem(
+                      context: context,
+                      icon: Icons.archive_outlined,
+                      title: 'الأرشيف',
+                    ),
+                    const SizedBox(height: 12),
+                    _menuItem(
+                      context: context,
+                      icon: Icons.settings_outlined,
+                      title: 'الإعدادات',
+                    ),
+                    _menuItem(
+                      context: context,
+                      icon: Icons.logout,
+                      title: 'تسجيل الخروج',
+                    ),
+                  ],
+                ),
+              ),
             ),
-
-            _menuItem(
-              context: context,
-              icon: Icons.people_outline,
-              title: 'المسوقون',
-              onTap: () {
-                Navigator.of(context).pop();
-                Navigator.pushNamed(context, AppRoutes.marketers);
-              },
-            ),
-
-            _menuItem(
-              context: context,
-              icon: Icons.account_tree_outlined,
-              title: 'شجرة المسوقين',
-            ),
-
-            _menuItem(
-              context: context,
-              icon: Icons.inventory_2_outlined,
-              title: 'المنتجات والمخزون',
-              onTap: () {
-                Navigator.of(context).pop();
-
-                Navigator.pushNamed(context, AppRoutes.products);
-              },
-            ),
-
-            _menuItem(
-              context: context,
-              icon: Icons.point_of_sale_outlined,
-              title: 'المبيعات',
-            ),
-
-            _menuItem(
-              context: context,
-              icon: Icons.bar_chart_outlined,
-              title: 'التقارير',
-            ),
-
-            _menuItem(
-              context: context,
-              icon: Icons.archive_outlined,
-              title: 'الأرشيف',
-            ),
-
-            const Spacer(),
-
-            _menuItem(
-              context: context,
-              icon: Icons.settings_outlined,
-              title: 'الإعدادات',
-            ),
-
-            _menuItem(
-              context: context,
-              icon: Icons.logout,
-              title: 'تسجيل الخروج',
-            ),
-
-            const SizedBox(height: 20),
           ],
         ),
       ),
@@ -109,9 +137,7 @@ class Sidebar extends StatelessWidget {
               fontWeight: FontWeight.bold,
             ),
           ),
-
           SizedBox(height: 4),
-
           Text(
             'إدارة المسوقين والمبيعات',
             style: TextStyle(color: Colors.white70, fontSize: 11),
@@ -131,7 +157,9 @@ class Sidebar extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
       decoration: BoxDecoration(
-        color: selected ? Colors.white.withOpacity(0.15) : Colors.transparent,
+        color: selected
+            ? Colors.white.withValues(alpha: 0.15)
+            : Colors.transparent,
         borderRadius: BorderRadius.circular(8),
       ),
       child: ListTile(
