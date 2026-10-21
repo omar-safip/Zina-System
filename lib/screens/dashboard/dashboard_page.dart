@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 
 import '../../database/database_helper.dart';
@@ -12,6 +14,12 @@ class DashboardPage extends StatefulWidget {
 }
 
 class _DashboardPageState extends State<DashboardPage> {
+  static const Color _burgundy = Color(0xFF70263D);
+  static const Color _gold = Color(0xFFC5A15A);
+  static const Color _background = Color(0xFFFAF5EC);
+  static const Color _border = Color(0xFFE8DCCB);
+  static const Color _softBeige = Color(0xFFF5EBDD);
+
   bool _isLoading = true;
   String? _errorMessage;
 
@@ -72,12 +80,18 @@ class _DashboardPageState extends State<DashboardPage> {
     try {
       final db = await DatabaseHelper.instance.database;
 
-      // إجمالي المبيعات والأرباح من الفواتير المسجلة.
+      // إجمالي المبيعات وأرباح المبيعات قبل خصم المصروفات.
       final salesSummary = await db.rawQuery('''
         SELECT
           COALESCE(SUM(total_amount), 0) AS total_sales,
           COALESCE(SUM(total_profit), 0) AS total_profit
         FROM sales
+      ''');
+
+      // إجمالي المصروفات المسجلة.
+      final expensesSummary = await db.rawQuery('''
+        SELECT COALESCE(SUM(amount), 0) AS total_expenses
+        FROM expenses
       ''');
 
       // عدد المسوقين النشطين.
@@ -116,6 +130,10 @@ class _DashboardPageState extends State<DashboardPage> {
           ? salesSummary.first
           : <String, dynamic>{};
 
+      final expensesData = expensesSummary.isNotEmpty
+          ? expensesSummary.first
+          : <String, dynamic>{};
+
       final marketersData = marketersSummary.isNotEmpty
           ? marketersSummary.first
           : <String, dynamic>{};
@@ -124,9 +142,15 @@ class _DashboardPageState extends State<DashboardPage> {
           ? productsSummary.first
           : <String, dynamic>{};
 
+      final totalProfitBeforeExpenses = _toDouble(salesData['total_profit']);
+      final totalExpenses = _toDouble(expensesData['total_expenses']);
+
       setState(() {
         _totalSales = _toDouble(salesData['total_sales']);
-        _totalProfit = _toDouble(salesData['total_profit']);
+
+        // صافي الأرباح بعد خصم المصروفات.
+        _totalProfit = totalProfitBeforeExpenses - totalExpenses;
+
         _marketersCount = _toInt(marketersData['total']);
         _productsCount = _toInt(productsData['total']);
         _recentSales = recentSales;
@@ -147,92 +171,75 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   Widget build(BuildContext context) {
     return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
-        drawer: const Drawer(child: Sidebar()),
-        body: Column(
-          children: [
-            _buildTopBar(),
-            Expanded(
-              child: RefreshIndicator(
-                onRefresh: _loadDashboardData,
-                child: SingleChildScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'لوحة التحكم',
-                        style: TextStyle(
-                          fontSize: 23,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'نظرة عامة على أداء النظام',
-                        style: TextStyle(
-                          color: Colors.grey.shade600,
-                          fontSize: 14,
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      if (_errorMessage != null) ...[
-                        _buildErrorMessage(),
-                        const SizedBox(height: 16),
-                      ],
-                      _buildStatistics(),
-                      const SizedBox(height: 24),
-                      _buildRecentSales(),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTopBar() {
-    return Builder(
-      builder: (context) {
-        return Container(
-          height: 70,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            border: Border(bottom: BorderSide(color: Color(0xFFE5E7EB))),
+      textDirection: ui.TextDirection.rtl,
+      child: Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: Theme.of(context).colorScheme.copyWith(
+            primary: _burgundy,
+            secondary: _gold,
+            surface: Colors.white,
           ),
-          child: Row(
-            children: [
-              IconButton(
-                onPressed: () {
-                  Scaffold.of(context).openDrawer();
-                },
-                icon: const Icon(Icons.menu, size: 27),
-                tooltip: 'القائمة',
-              ),
-              const Spacer(),
+          scaffoldBackgroundColor: _background,
+          appBarTheme: const AppBarTheme(
+            backgroundColor: _burgundy,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            centerTitle: false,
+          ),
+          progressIndicatorTheme: const ProgressIndicatorThemeData(
+            color: _burgundy,
+          ),
+        ),
+        child: Scaffold(
+          backgroundColor: _background,
+          drawer: const Drawer(child: Sidebar()),
+          appBar: AppBar(
+            title: const Text(
+              'لوحة التحكم',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            backgroundColor: _burgundy,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            actions: [
               IconButton(
                 onPressed: _loadDashboardData,
                 tooltip: 'تحديث البيانات',
-                icon: const Icon(Icons.refresh, size: 24),
+                icon: const Icon(Icons.refresh),
               ),
-              const SizedBox(width: 8),
-              const Icon(Icons.notifications_none, size: 25),
-              const SizedBox(width: 14),
-              CircleAvatar(
-                radius: 20,
-                backgroundColor: Colors.blue.shade50,
-                child: const Icon(Icons.person, color: Color(0xFF1E4FA3)),
-              ),
+              const SizedBox(width: 6),
             ],
           ),
-        );
-      },
+          body: RefreshIndicator(
+            color: _burgundy,
+            onRefresh: _loadDashboardData,
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'نظرة عامة على أداء النظام',
+                    style: TextStyle(
+                      color: Colors.brown.shade400,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  if (_errorMessage != null) ...[
+                    _buildErrorMessage(),
+                    const SizedBox(height: 16),
+                  ],
+                  _buildStatistics(),
+                  const SizedBox(height: 24),
+                  _buildRecentSales(),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -251,7 +258,7 @@ class _DashboardPageState extends State<DashboardPage> {
           icon: Icons.point_of_sale,
         ),
         StatCard(
-          title: 'إجمالي الأرباح',
+          title: 'صافي الأرباح',
           value: _isLoading ? '...' : _formatAmount(_totalProfit),
           icon: Icons.trending_up,
         ),
@@ -276,7 +283,14 @@ class _DashboardPageState extends State<DashboardPage> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: _border),
+        boxShadow: [
+          BoxShadow(
+            color: _gold.withValues(alpha: 0.07),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -286,7 +300,11 @@ class _DashboardPageState extends State<DashboardPage> {
               const Expanded(
                 child: Text(
                   'آخر عمليات البيع',
-                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                    color: _burgundy,
+                  ),
                 ),
               ),
               if (_isLoading)
@@ -324,16 +342,16 @@ class _DashboardPageState extends State<DashboardPage> {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: _background,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: _border),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const CircleAvatar(
-            backgroundColor: Color(0xFFEAF1FF),
-            foregroundColor: Color(0xFF1E4FA3),
+            backgroundColor: _softBeige,
+            foregroundColor: _burgundy,
             child: Icon(Icons.receipt_long_outlined),
           ),
           const SizedBox(width: 12),
@@ -346,17 +364,18 @@ class _DashboardPageState extends State<DashboardPage> {
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 14,
+                    color: _burgundy,
                   ),
                 ),
                 const SizedBox(height: 5),
                 Text(
                   marketerName,
-                  style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
+                  style: TextStyle(color: Colors.brown.shade700, fontSize: 13),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   date,
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                  style: TextStyle(color: Colors.brown.shade400, fontSize: 12),
                 ),
               ],
             ),
@@ -367,7 +386,7 @@ class _DashboardPageState extends State<DashboardPage> {
               totalAmount,
               textAlign: TextAlign.left,
               style: const TextStyle(
-                color: Color(0xFF1E4FA3),
+                color: _burgundy,
                 fontWeight: FontWeight.bold,
                 fontSize: 13,
               ),
@@ -387,13 +406,13 @@ class _DashboardPageState extends State<DashboardPage> {
             Icon(
               Icons.receipt_long_outlined,
               size: 50,
-              color: Colors.grey.shade400,
+              color: _gold.withValues(alpha: 0.8),
             ),
             const SizedBox(height: 10),
             Text(
               'لا توجد عمليات بيع حتى الآن',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey.shade600),
+              style: TextStyle(color: Colors.brown.shade400),
             ),
           ],
         ),

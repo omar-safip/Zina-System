@@ -3,6 +3,13 @@ import 'package:flutter/material.dart';
 import '../../database/database_helper.dart';
 import '../../widgets/sidebar.dart';
 
+const Color _zeinaBurgundy = Color(0xFF70263D);
+const Color _zeinaDarkBurgundy = Color(0xFF4D192B);
+const Color _zeinaGold = Color(0xFFC5A15A);
+const Color _zeinaBeige = Color(0xFFFAF5EC);
+const Color _zeinaLightBeige = Color(0xFFF2E7D5);
+const Color _zeinaBorder = Color(0xFFE8DCCB);
+
 enum ReportPeriod { today, week, month, custom }
 
 class ReportsPage extends StatefulWidget {
@@ -188,7 +195,6 @@ class _ReportsPageState extends State<ReportsPage> {
           : 0;
 
       summary['active_marketers'] = marketersResult.first['total'] ?? 0;
-
       summary['active_products'] = productsResult.first['total'] ?? 0;
 
       final grossProfit = _toDouble(summary['total_profit']);
@@ -226,6 +232,19 @@ class _ReportsPageState extends State<ReportsPage> {
       helpText: 'اختر بداية التقرير',
       cancelText: 'إلغاء',
       confirmText: 'تأكيد',
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: _zeinaBurgundy,
+              onPrimary: Colors.white,
+              surface: _zeinaBeige,
+              onSurface: _zeinaDarkBurgundy,
+            ),
+          ),
+          child: child!,
+        );
+      },
     );
 
     if (selected == null) return;
@@ -246,6 +265,19 @@ class _ReportsPageState extends State<ReportsPage> {
       helpText: 'اختر نهاية التقرير',
       cancelText: 'إلغاء',
       confirmText: 'تأكيد',
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: _zeinaBurgundy,
+              onPrimary: Colors.white,
+              surface: _zeinaBeige,
+              onSurface: _zeinaDarkBurgundy,
+            ),
+          ),
+          child: child!,
+        );
+      },
     );
 
     if (selected == null) return;
@@ -276,6 +308,10 @@ class _ReportsPageState extends State<ReportsPage> {
     _loadReport();
   }
 
+  // ==================================================
+  // الشريط العلوي
+  // ==================================================
+
   Widget _buildTopBar() {
     return Builder(
       builder: (context) {
@@ -284,25 +320,31 @@ class _ReportsPageState extends State<ReportsPage> {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           decoration: const BoxDecoration(
             color: Colors.white,
-            border: Border(bottom: BorderSide(color: Color(0xFFE5E7EB))),
+            border: Border(bottom: BorderSide(color: _zeinaBorder)),
           ),
           child: Row(
             children: [
               IconButton(
                 onPressed: () => Scaffold.of(context).openDrawer(),
-                icon: const Icon(Icons.menu, size: 27),
+                icon: const Icon(Icons.menu_rounded, size: 27),
+                color: _zeinaBurgundy,
                 tooltip: 'القائمة',
               ),
               const SizedBox(width: 8),
               const Expanded(
                 child: Text(
                   'التقارير',
-                  style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    fontSize: 19,
+                    fontWeight: FontWeight.bold,
+                    color: _zeinaDarkBurgundy,
+                  ),
                 ),
               ),
               IconButton(
                 onPressed: _loadReport,
-                icon: const Icon(Icons.refresh),
+                icon: const Icon(Icons.refresh_rounded),
+                color: _zeinaBurgundy,
                 tooltip: 'تحديث التقرير',
               ),
             ],
@@ -312,32 +354,30 @@ class _ReportsPageState extends State<ReportsPage> {
     );
   }
 
+  // ==================================================
+  // اختيار الفترة الزمنية
+  // ==================================================
+
   Widget _buildPeriodSelector() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _zeinaBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'الفترة الزمنية',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-          ),
-          const SizedBox(height: 12),
+          _buildSectionTitle('الفترة الزمنية', Icons.calendar_month_outlined),
+          const SizedBox(height: 16),
           DropdownButtonFormField<ReportPeriod>(
             value: _period,
             isExpanded: true,
             decoration: const InputDecoration(
-              border: OutlineInputBorder(),
-              contentPadding: EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 10,
-              ),
+              labelText: 'حدد فترة التقرير',
+              prefixIcon: Icon(Icons.date_range_rounded),
             ),
             items: const [
               DropdownMenuItem(value: ReportPeriod.today, child: Text('اليوم')),
@@ -357,34 +397,73 @@ class _ReportsPageState extends State<ReportsPage> {
             onChanged: _changePeriod,
           ),
           if (_period == ReportPeriod.custom) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
                 OutlinedButton.icon(
                   onPressed: _selectStartDate,
-                  icon: const Icon(Icons.calendar_today),
+                  icon: const Icon(Icons.calendar_today_rounded, size: 18),
                   label: Text('من ${_formatDate(_dateToString(_startDate))}'),
+                  style: _dateButtonStyle(),
                 ),
                 OutlinedButton.icon(
                   onPressed: _selectEndDate,
-                  icon: const Icon(Icons.event),
+                  icon: const Icon(Icons.event_rounded, size: 18),
                   label: Text('إلى ${_formatDate(_dateToString(_endDate))}'),
+                  style: _dateButtonStyle(),
                 ),
               ],
             ),
           ],
-          const SizedBox(height: 8),
-          Text(
-            'من ${_formatDate(_dateToString(_effectiveStart))} '
-            'إلى ${_formatDate(_dateToString(_effectiveEnd))}',
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+          const SizedBox(height: 14),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: _zeinaBeige,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.info_outline_rounded,
+                  color: _zeinaBurgundy,
+                  size: 18,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'من ${_formatDate(_dateToString(_effectiveStart))} '
+                    'إلى ${_formatDate(_dateToString(_effectiveEnd))}',
+                    style: const TextStyle(
+                      color: _zeinaDarkBurgundy,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
     );
   }
+
+  ButtonStyle _dateButtonStyle() {
+    return OutlinedButton.styleFrom(
+      foregroundColor: _zeinaBurgundy,
+      side: const BorderSide(color: _zeinaBorder),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+    );
+  }
+
+  // ==================================================
+  // بطاقة إحصائية
+  // ==================================================
 
   Widget _buildStatCard({
     required String title,
@@ -397,8 +476,8 @@ class _ReportsPageState extends State<ReportsPage> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _zeinaBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -406,40 +485,60 @@ class _ReportsPageState extends State<ReportsPage> {
           Row(
             children: [
               Container(
-                width: 38,
-                height: 38,
+                width: 40,
+                height: 40,
                 decoration: BoxDecoration(
                   color: color.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(icon, color: color, size: 21),
               ),
-              const Spacer(),
-              Flexible(
+              const SizedBox(width: 8),
+              Expanded(
                 child: Text(
                   title,
                   textAlign: TextAlign.end,
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: _zeinaDarkBurgundy,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 16),
-          Text(
-            value,
-            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerRight,
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: _zeinaDarkBurgundy,
+              ),
+            ),
           ),
           if (subtitle != null) ...[
-            const SizedBox(height: 6),
+            const SizedBox(height: 7),
             Text(
               subtitle,
-              style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+              style: TextStyle(
+                fontSize: 11,
+                color: Colors.grey.shade600,
+                height: 1.4,
+              ),
             ),
           ],
         ],
       ),
     );
   }
+
+  // ==================================================
+  // الإحصائيات
+  // ==================================================
 
   Widget _buildStatistics() {
     final totalSales = _toDouble(_summary['total_sales']);
@@ -462,52 +561,54 @@ class _ReportsPageState extends State<ReportsPage> {
           _buildStatCard(
             title: 'إجمالي المبيعات',
             value: _money(totalSales),
-            icon: Icons.point_of_sale,
-            color: const Color(0xFF1E4FA3),
+            icon: Icons.point_of_sale_rounded,
+            color: _zeinaBurgundy,
           ),
           _buildStatCard(
             title: 'إجمالي الربح',
             value: _money(totalProfit),
-            icon: Icons.trending_up,
-            color: Colors.green,
+            icon: Icons.trending_up_rounded,
+            color: const Color(0xFF26734D),
             subtitle: 'قبل خصم العمولات والمصروفات',
           ),
           _buildStatCard(
             title: 'العمولات الشخصية',
             value: _money(commissions),
-            icon: Icons.person_outline,
-            color: Colors.orange,
+            icon: Icons.person_outline_rounded,
+            color: _zeinaGold,
           ),
           _buildStatCard(
             title: 'عمولات التبعية',
             value: _money(referralCommissions),
             icon: Icons.account_tree_outlined,
-            color: Colors.deepPurple,
+            color: const Color(0xFF77549A),
           ),
           _buildStatCard(
             title: 'المصروفات',
             value: _money(expenses),
             icon: Icons.payments_outlined,
-            color: Colors.red,
+            color: const Color(0xFFB54747),
           ),
           _buildStatCard(
             title: 'صافي الربح التقديري',
             value: _money(netProfit),
             icon: Icons.account_balance_wallet_outlined,
-            color: netProfit >= 0 ? Colors.teal : Colors.red,
+            color: netProfit >= 0
+                ? const Color(0xFF26734D)
+                : const Color(0xFFB54747),
             subtitle: 'بعد خصم العمولات والمصروفات',
           ),
           _buildStatCard(
             title: 'عدد الفواتير',
             value: salesCount.toString(),
             icon: Icons.receipt_long_outlined,
-            color: Colors.blueGrey,
+            color: const Color(0xFF64748B),
           ),
           _buildStatCard(
             title: 'متوسط الفاتورة',
             value: _money(salesCount > 0 ? totalSales / salesCount : 0),
             icon: Icons.calculate_outlined,
-            color: Colors.indigo,
+            color: const Color(0xFF5966A8),
           ),
         ];
 
@@ -528,39 +629,42 @@ class _ReportsPageState extends State<ReportsPage> {
     );
   }
 
+  // ==================================================
+  // ملخص النظام
+  // ==================================================
+
   Widget _buildGeneralInformation() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _zeinaBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'ملخص النظام',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 16),
+          _buildSectionTitle('ملخص النظام', Icons.analytics_outlined),
+          const SizedBox(height: 18),
           _infoRow(
             'المسوقون النشطون',
             _toInt(_summary['active_marketers']).toString(),
-            Icons.people_outline,
+            Icons.people_outline_rounded,
           ),
-          const Divider(height: 24),
+          const Divider(height: 26, color: _zeinaBorder),
           _infoRow(
             'المنتجات النشطة',
             _toInt(_summary['active_products']).toString(),
             Icons.inventory_2_outlined,
           ),
-          const Divider(height: 24),
+          const Divider(height: 26, color: _zeinaBorder),
           _infoRow(
             'منتجات وصلت للحد الأدنى للمخزون',
             _lowStockCount.toString(),
-            Icons.warning_amber_outlined,
-            valueColor: _lowStockCount > 0 ? Colors.red : Colors.green,
+            Icons.warning_amber_rounded,
+            valueColor: _lowStockCount > 0
+                ? const Color(0xFFB54747)
+                : const Color(0xFF26734D),
           ),
         ],
       ),
@@ -575,20 +679,69 @@ class _ReportsPageState extends State<ReportsPage> {
   }) {
     return Row(
       children: [
-        Icon(icon, color: const Color(0xFF1E4FA3), size: 21),
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: _zeinaLightBeige,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, color: _zeinaBurgundy, size: 20),
+        ),
         const SizedBox(width: 10),
-        Expanded(child: Text(title, style: const TextStyle(fontSize: 13))),
+        Expanded(
+          child: Text(
+            title,
+            style: const TextStyle(fontSize: 13, color: _zeinaDarkBurgundy),
+          ),
+        ),
+        const SizedBox(width: 8),
         Text(
           value,
           style: TextStyle(
-            fontSize: 14,
+            fontSize: 15,
             fontWeight: FontWeight.bold,
-            color: valueColor,
+            color: valueColor ?? _zeinaDarkBurgundy,
           ),
         ),
       ],
     );
   }
+
+  // ==================================================
+  // عنوان القسم
+  // ==================================================
+
+  Widget _buildSectionTitle(String title, IconData icon) {
+    return Row(
+      children: [
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: _zeinaLightBeige,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: _zeinaBurgundy, size: 22),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            title,
+            style: const TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.bold,
+              color: _zeinaDarkBurgundy,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ==================================================
+  // جدول الفواتير
+  // ==================================================
 
   Widget _buildSalesTable() {
     if (_sales.isEmpty) {
@@ -597,20 +750,29 @@ class _ReportsPageState extends State<ReportsPage> {
         padding: const EdgeInsets.all(28),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFE5E7EB)),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: _zeinaBorder),
         ),
         child: Column(
           children: [
-            Icon(
+            const Icon(
               Icons.receipt_long_outlined,
-              size: 44,
-              color: Colors.grey.shade400,
+              size: 46,
+              color: _zeinaGold,
             ),
             const SizedBox(height: 12),
             const Text(
               'لا توجد فواتير في الفترة المحددة',
               textAlign: TextAlign.center,
+              style: TextStyle(
+                color: _zeinaDarkBurgundy,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              'جرّب اختيار فترة زمنية أخرى',
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
             ),
           ],
         ),
@@ -621,126 +783,202 @@ class _ReportsPageState extends State<ReportsPage> {
       width: double.infinity,
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _zeinaBorder),
       ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: DataTable(
-          headingRowColor: WidgetStateProperty.all(const Color(0xFFF5F7FB)),
-          columns: const [
-            DataColumn(label: Text('الفاتورة')),
-            DataColumn(label: Text('المسوق')),
-            DataColumn(label: Text('التاريخ')),
-            DataColumn(label: Text('المبيعات')),
-            DataColumn(label: Text('الربح')),
-          ],
-          rows: _sales.map((sale) {
-            return DataRow(
-              cells: [
-                DataCell(Text('#${sale['id']}')),
-                DataCell(
-                  Text(
-                    (sale['marketer_name'] as String?)?.trim().isNotEmpty ==
-                            true
-                        ? sale['marketer_name'].toString()
-                        : 'غير محدد',
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: DataTable(
+            headingRowColor: WidgetStateProperty.all(_zeinaLightBeige),
+            headingTextStyle: const TextStyle(
+              color: _zeinaDarkBurgundy,
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+            ),
+            dataTextStyle: const TextStyle(
+              color: _zeinaDarkBurgundy,
+              fontSize: 12,
+            ),
+            dividerThickness: 0.6,
+            horizontalMargin: 16,
+            columnSpacing: 22,
+            columns: const [
+              DataColumn(label: Text('الفاتورة')),
+              DataColumn(label: Text('المسوق')),
+              DataColumn(label: Text('التاريخ')),
+              DataColumn(label: Text('المبيعات')),
+              DataColumn(label: Text('الربح')),
+            ],
+            rows: _sales.map((sale) {
+              final marketerName =
+                  sale['marketer_name']?.toString().trim() ?? '';
+
+              return DataRow(
+                cells: [
+                  DataCell(
+                    Text(
+                      '#${sale['id']}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: _zeinaBurgundy,
+                      ),
+                    ),
                   ),
-                ),
-                DataCell(Text(_formatDate(sale['created_at']?.toString()))),
-                DataCell(Text(_money(sale['total_amount']))),
-                DataCell(Text(_money(sale['total_profit']))),
-              ],
-            );
-          }).toList(),
+                  DataCell(
+                    Text(marketerName.isNotEmpty ? marketerName : 'غير محدد'),
+                  ),
+                  DataCell(Text(_formatDate(sale['created_at']?.toString()))),
+                  DataCell(Text(_money(sale['total_amount']))),
+                  DataCell(Text(_money(sale['total_profit']))),
+                ],
+              );
+            }).toList(),
+          ),
         ),
       ),
     );
   }
 
+  // ==================================================
+  // بناء الصفحة
+  // ==================================================
+
   @override
   Widget build(BuildContext context) {
+    final baseTheme = Theme.of(context);
+
     return Directionality(
       textDirection: TextDirection.rtl,
-      child: Scaffold(
-        backgroundColor: const Color(0xFFF5F7FB),
-        drawer: const Drawer(child: Sidebar()),
-        body: Column(
-          children: [
-            _buildTopBar(),
-            Expanded(
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _error != null
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(
-                              Icons.error_outline,
-                              color: Colors.red,
-                              size: 44,
-                            ),
-                            const SizedBox(height: 12),
-                            Text(_error!, textAlign: TextAlign.center),
-                            const SizedBox(height: 12),
-                            ElevatedButton.icon(
-                              onPressed: _loadReport,
-                              icon: const Icon(Icons.refresh),
-                              label: const Text('إعادة المحاولة'),
-                            ),
-                          ],
-                        ),
-                      ),
-                    )
-                  : RefreshIndicator(
-                      onRefresh: _loadReport,
-                      child: SingleChildScrollView(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'التقارير المالية',
-                              style: TextStyle(
-                                fontSize: 23,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'ملخص المبيعات والأرباح والعمولات والمصروفات',
-                              style: TextStyle(
-                                color: Colors.grey.shade600,
-                                fontSize: 13,
-                              ),
-                            ),
-                            const SizedBox(height: 20),
-                            _buildPeriodSelector(),
-                            const SizedBox(height: 20),
-                            _buildStatistics(),
-                            const SizedBox(height: 20),
-                            _buildGeneralInformation(),
-                            const SizedBox(height: 24),
-                            const Text(
-                              'فواتير الفترة المحددة',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            _buildSalesTable(),
-                            const SizedBox(height: 24),
-                          ],
-                        ),
-                      ),
-                    ),
+      child: Theme(
+        data: baseTheme.copyWith(
+          scaffoldBackgroundColor: _zeinaBeige,
+          colorScheme: baseTheme.colorScheme.copyWith(
+            primary: _zeinaBurgundy,
+            secondary: _zeinaGold,
+          ),
+          inputDecorationTheme: InputDecorationTheme(
+            filled: true,
+            fillColor: Colors.white,
+            labelStyle: const TextStyle(color: _zeinaDarkBurgundy),
+            prefixIconColor: _zeinaBurgundy,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: 15,
             ),
-          ],
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(13),
+              borderSide: const BorderSide(color: _zeinaBorder),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(13),
+              borderSide: const BorderSide(color: _zeinaBorder),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(13),
+              borderSide: const BorderSide(color: _zeinaBurgundy, width: 1.6),
+            ),
+          ),
+          elevatedButtonTheme: ElevatedButtonThemeData(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _zeinaBurgundy,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+        ),
+        child: Scaffold(
+          drawer: const Drawer(backgroundColor: _zeinaBeige, child: Sidebar()),
+          body: Column(
+            children: [
+              _buildTopBar(),
+              Expanded(
+                child: _isLoading
+                    ? const Center(
+                        child: CircularProgressIndicator(color: _zeinaBurgundy),
+                      )
+                    : _error != null
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.error_outline_rounded,
+                                color: _zeinaBurgundy,
+                                size: 46,
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                _error!,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: _zeinaDarkBurgundy,
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              ElevatedButton.icon(
+                                onPressed: _loadReport,
+                                icon: const Icon(Icons.refresh_rounded),
+                                label: const Text('إعادة المحاولة'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    : RefreshIndicator(
+                        color: _zeinaBurgundy,
+                        backgroundColor: Colors.white,
+                        onRefresh: _loadReport,
+                        child: SingleChildScrollView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'التقارير المالية',
+                                style: TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                  color: _zeinaDarkBurgundy,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'ملخص المبيعات والأرباح والعمولات والمصروفات',
+                                style: TextStyle(
+                                  color: Colors.grey.shade600,
+                                  fontSize: 13,
+                                  height: 1.5,
+                                ),
+                              ),
+                              const SizedBox(height: 22),
+                              _buildPeriodSelector(),
+                              const SizedBox(height: 20),
+                              _buildStatistics(),
+                              const SizedBox(height: 22),
+                              _buildGeneralInformation(),
+                              const SizedBox(height: 26),
+                              _buildSectionTitle(
+                                'فواتير الفترة المحددة',
+                                Icons.receipt_long_outlined,
+                              ),
+                              const SizedBox(height: 14),
+                              _buildSalesTable(),
+                              const SizedBox(height: 24),
+                            ],
+                          ),
+                        ),
+                      ),
+              ),
+            ],
+          ),
         ),
       ),
     );

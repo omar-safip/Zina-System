@@ -34,8 +34,8 @@ class DatabaseHelper {
     return openDatabase(
       path,
 
-      // مهم: رفع الإصدار من 8 إلى 9 لتشغيل الترقية.
-      version: 9,
+      // الإصدار 10: بيانات فاتورة الزبون وسجل التحصيل.
+      version: 10,
 
       onConfigure: (db) async {
         await db.execute('PRAGMA foreign_keys = ON');
@@ -45,6 +45,7 @@ class DatabaseHelper {
         await _createTables(db);
         await _ensureReferralCommissionColumns(db);
         await _upgradeToVersion9(db);
+        await _upgradeToVersion10(db, isNewDatabase: true);
       },
 
       onUpgrade: (db, oldVersion, newVersion) async {
@@ -79,6 +80,10 @@ class DatabaseHelper {
 
         if (oldVersion < 9) {
           await _upgradeToVersion9(db);
+        }
+
+        if (oldVersion < 10) {
+          await _upgradeToVersion10(db);
         }
       },
     );
@@ -578,6 +583,58 @@ class DatabaseHelper {
       CREATE INDEX IF NOT EXISTS
       idx_audit_logs_entity
       ON audit_logs(entity_type, entity_id)
+    ''');
+  }
+
+  // ==================================================
+  // الإصدار 10: بيانات فواتير الزبائن والتحصيل
+  // ==================================================
+
+  Future<void> _upgradeToVersion10(
+    Database db, {
+    bool isNewDatabase = false,
+  }) async {
+    final columns = await db.rawQuery('PRAGMA table_info(sales)');
+    final existing = columns.map((row) => row['name'].toString()).toSet();
+    final additions = <String, String>{
+      'customer_name': 'TEXT',
+      'customer_phone': 'TEXT',
+      'delivery_fee': 'REAL NOT NULL DEFAULT 0',
+      'payment_status': "TEXT NOT NULL DEFAULT 'unpaid'",
+      'payment_updated_at': 'TEXT',
+      'fully_paid_at': 'TEXT',
+    };
+
+    for (final entry in additions.entries) {
+      if (!existing.contains(entry.key)) {
+        await db.execute(
+          'ALTER TABLE sales ADD COLUMN ${entry.key} ${entry.value}',
+        );
+      }
+    }
+
+    // المبيعات القديمة لا نملك دليلًا على حالة تحصيلها.
+    if (!isNewDatabase) {
+      await db.update('sales', {'payment_status': 'legacy'});
+    }
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS sale_payments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sale_id INTEGER NOT NULL,
+        amount REAL NOT NULL CHECK (amount > 0),
+        note TEXT,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE RESTRICT
+      )
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_sale_payments_sale_id
+      ON sale_payments(sale_id)
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_sales_payment_status
+      ON sales(payment_status)
     ''');
   }
 
@@ -1624,5 +1681,247 @@ class DatabaseHelper {
       ''',
       [marketerId],
     );
+  }
+
+  // ==================================================
+  // فواتير الزبائن: تسجيل بيانات الفاتورة والدفعات
+  // ملاحظة: total_amount هو إجمالي المنتجات، والتوصيل منفصل.
+  // ==================================================
+
+  Future<void> setSaleInvoiceDetails({
+    required int saleId,
+    required String customerName,
+    required String customerPhone,
+    double deliveryFee = 0,
+    double initialPayment = 0,
+  }) async {
+    final name = customerName.trim();
+    final phone = customerPhone.trim();
+    if (name.isEmpty || phone.isEmpty) {
+      throw Exception('اسم الزبون ورقم هاتفه مطلوبان');
+    }
+    if (!deliveryFee.isFinite ||
+        deliveryFee < 0 ||
+        !initialPayment.isFinite ||
+        initialPayment < 0) {
+      throw Exception('قيمة التوصيل والدفعة يجب أن تكونا صحيحتين وغير سالبتين');
+    }
+    final db = await database;
+    await db.transaction((txn) async {
+      final rows = await txn.query(
+        'sales',
+        where: 'id = ?',
+        whereArgs: [saleId],
+        limit: 1,
+      );
+      if (rows.isEmpty) throw Exception('عملية البيع غير موجودة');
+      final sale = rows.first;
+      if (sale['payment_status'] != 'unpaid') {
+        throw Exception(
+          'لا يمكن إعادة تهيئة فاتورة سبق تسجيل دفعاتها أو فاتورة قديمة',
+        );
+      }
+      final prior =
+          Sqflite.firstIntValue(
+            await txn.rawQuery(
+              'SELECT COUNT(*) FROM sale_payments WHERE sale_id = ?',
+              [saleId],
+            ),
+          ) ??
+          0;
+      if (prior != 0 || sale['customer_name'] != null) {
+        throw Exception('تم إعداد هذه الفاتورة مسبقًا');
+      }
+      final total = (sale['total_amount'] as num).toDouble() + deliveryFee;
+      if (initialPayment > total + 0.000001) {
+        throw Exception('المبلغ المقدم أكبر من إجمالي الفاتورة');
+      }
+      final now = DateTime.now().toIso8601String();
+      if (initialPayment > 0) {
+        await txn.insert('sale_payments', {
+          'sale_id': saleId,
+          'amount': initialPayment,
+          'note': 'الدفعة الأولى',
+          'created_at': now,
+        });
+      }
+      final status = total - initialPayment <= 0.000001
+          ? 'paid'
+          : initialPayment > 0
+          ? 'partial'
+          : 'unpaid';
+      await txn.update(
+        'sales',
+        {
+          'customer_name': name,
+          'customer_phone': phone,
+          'delivery_fee': deliveryFee,
+          'payment_status': status,
+          'payment_updated_at': now,
+          'fully_paid_at': status == 'paid' ? now : null,
+        },
+        where: 'id = ?',
+        whereArgs: [saleId],
+      );
+    });
+  }
+
+  Future<Map<String, dynamic>?> getSaleInvoice(int saleId) async {
+    final db = await database;
+    final sales = await db.query(
+      'sales',
+      where: 'id = ?',
+      whereArgs: [saleId],
+      limit: 1,
+    );
+    if (sales.isEmpty) return null;
+    final items = await db.rawQuery(
+      '''
+      SELECT si.*, p.name AS product_name
+      FROM sale_items si LEFT JOIN products p ON p.id = si.product_id
+      WHERE si.sale_id = ? ORDER BY si.id ASC
+    ''',
+      [saleId],
+    );
+    final payments = await db.query(
+      'sale_payments',
+      where: 'sale_id = ?',
+      whereArgs: [saleId],
+      orderBy: 'created_at ASC, id ASC',
+    );
+    final sale = sales.first;
+    final total =
+        (sale['total_amount'] as num).toDouble() +
+        ((sale['delivery_fee'] as num?)?.toDouble() ?? 0);
+    final paid = payments.fold<double>(
+      0,
+      (sum, row) => sum + (row['amount'] as num).toDouble(),
+    );
+    return {
+      'sale': sale,
+      'items': items,
+      'payments': payments,
+      'invoice_total': total,
+      'paid_amount': paid,
+      'remaining_amount': (total - paid).clamp(0.0, double.infinity).toDouble(),
+    };
+  }
+
+  Future<void> addSalePayment({
+    required int saleId,
+    required double amount,
+    String? note,
+  }) async {
+    if (!amount.isFinite || amount <= 0) {
+      throw Exception('أدخل مبلغًا أكبر من صفر');
+    }
+    final db = await database;
+    await db.transaction((txn) async {
+      final rows = await txn.query(
+        'sales',
+        where: 'id = ?',
+        whereArgs: [saleId],
+        limit: 1,
+      );
+      if (rows.isEmpty) throw Exception('عملية البيع غير موجودة');
+      final sale = rows.first;
+      if (sale['customer_name'] == null || sale['payment_status'] == 'legacy') {
+        throw Exception('يجب تجهيز فاتورة الزبون أولًا');
+      }
+      if (sale['payment_status'] == 'paid') {
+        throw Exception('الفاتورة مسددة بالكامل');
+      }
+      final result = await txn.rawQuery(
+        'SELECT COALESCE(SUM(amount), 0) AS paid FROM sale_payments WHERE sale_id = ?',
+        [saleId],
+      );
+      final paid = (result.first['paid'] as num).toDouble();
+      final total =
+          (sale['total_amount'] as num).toDouble() +
+          (sale['delivery_fee'] as num).toDouble();
+      final remaining = total - paid;
+      if (sale['payment_status'] == 'paid') {
+        throw Exception('الدفعة أكبر من المبلغ المتبقي');
+      }
+      final now = DateTime.now().toIso8601String();
+      await txn.insert('sale_payments', {
+        'sale_id': saleId,
+        'amount': amount,
+        'note': note?.trim(),
+        'created_at': now,
+      });
+      final completed = remaining - amount <= 0.000001;
+      await txn.update(
+        'sales',
+        {
+          'payment_status': completed ? 'paid' : 'partial',
+          'payment_updated_at': now,
+          'fully_paid_at': completed ? now : null,
+        },
+        where: 'id = ?',
+        whereArgs: [saleId],
+      );
+      await txn.insert('audit_logs', {
+        'action': 'add_payment',
+        'entity_type': 'sale',
+        'entity_id': saleId,
+        'description': 'تسجيل دفعة على فاتورة بيع',
+        'old_values': jsonEncode({'paid_amount': paid}),
+        'new_values': jsonEncode({
+          'payment_amount': amount,
+          'paid_amount': paid + amount,
+        }),
+        'created_at': now,
+      });
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> getOutstandingSaleInvoices() async {
+    final db = await database;
+    return db.rawQuery('''
+      SELECT s.*, (s.total_amount + s.delivery_fee) AS invoice_total,
+        COALESCE((SELECT SUM(sp.amount) FROM sale_payments sp WHERE sp.sale_id = s.id), 0) AS paid_amount,
+        (s.total_amount + s.delivery_fee - COALESCE(
+          (SELECT SUM(sp.amount) FROM sale_payments sp WHERE sp.sale_id = s.id), 0
+        )) AS remaining_amount
+      FROM sales s
+      WHERE s.payment_status IN ('unpaid', 'partial') AND s.customer_name IS NOT NULL
+      ORDER BY s.created_at ASC, s.id ASC
+    ''');
+  }
+  // ==================================================
+  // المصروفات وصافي الأرباح
+  // ==================================================
+
+  /// إجمالي جميع المصروفات المسجلة
+  Future<double> getTotalExpenses() async {
+    final db = await database;
+
+    final result = await db.rawQuery('''
+    SELECT COALESCE(SUM(amount), 0) AS total
+    FROM expenses
+  ''');
+
+    return (result.first['total'] as num?)?.toDouble() ?? 0.0;
+  }
+
+  /// إجمالي أرباح المبيعات قبل خصم المصروفات
+  Future<double> getTotalSalesProfit() async {
+    final db = await database;
+
+    final result = await db.rawQuery('''
+    SELECT COALESCE(SUM(total_profit), 0) AS total
+    FROM sales
+  ''');
+
+    return (result.first['total'] as num?)?.toDouble() ?? 0.0;
+  }
+
+  /// صافي الأرباح بعد خصم المصروفات
+  Future<double> getNetProfit() async {
+    final salesProfit = await getTotalSalesProfit();
+    final expenses = await getTotalExpenses();
+
+    return salesProfit - expenses;
   }
 }

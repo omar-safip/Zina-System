@@ -12,6 +12,12 @@ class StatCard extends StatelessWidget {
     required this.icon,
   });
 
+  // ألوان هوية ZEINA
+  static const Color _burgundy = Color(0xFF70263D);
+  static const Color _darkBurgundy = Color(0xFF4D192B);
+  static const Color _lightBeige = Color(0xFFF2E7D5);
+  static const Color _borderColor = Color(0xFFE8DCCB);
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -19,7 +25,7 @@ class StatCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: _borderColor),
       ),
       child: Row(
         children: [
@@ -27,10 +33,10 @@ class StatCard extends StatelessWidget {
             width: 50,
             height: 50,
             decoration: BoxDecoration(
-              color: const Color(0xFFEAF1FF),
+              color: _lightBeige,
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(icon, color: const Color(0xFF1E4FA3)),
+            child: Icon(icon, color: _burgundy),
           ),
 
           const SizedBox(width: 14),
@@ -42,7 +48,7 @@ class StatCard extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                  style: const TextStyle(color: _darkBurgundy, fontSize: 13),
                 ),
 
                 const SizedBox(height: 5),
@@ -50,6 +56,7 @@ class StatCard extends StatelessWidget {
                 Text(
                   value,
                   style: const TextStyle(
+                    color: _burgundy,
                     fontSize: 19,
                     fontWeight: FontWeight.bold,
                   ),

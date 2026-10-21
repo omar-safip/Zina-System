@@ -1,5 +1,13 @@
 import 'package:flutter/material.dart';
 import '../../database/database_helper.dart';
+import '../../widgets/sidebar.dart';
+
+const Color _zeinaBurgundy = Color(0xFF70263D);
+const Color _zeinaDarkBurgundy = Color(0xFF4D192B);
+const Color _zeinaGold = Color(0xFFC5A15A);
+const Color _zeinaBeige = Color(0xFFFAF5EC);
+const Color _zeinaLightBeige = Color(0xFFF2E7D5);
+const Color _zeinaBorder = Color(0xFFE8DCCB);
 
 class EditProductPage extends StatefulWidget {
   final Map<String, dynamic> product;
@@ -57,7 +65,6 @@ class _EditProductPageState extends State<EditProductPage> {
     _sellingPriceController.dispose();
     _quantityController.dispose();
     _minQuantityController.dispose();
-
     super.dispose();
   }
 
@@ -73,7 +80,11 @@ class _EditProductPageState extends State<EditProductPage> {
       ..showSnackBar(
         SnackBar(
           content: Text(message),
-          backgroundColor: isError ? Colors.red.shade700 : null,
+          backgroundColor: isError ? _zeinaDarkBurgundy : _zeinaBurgundy,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
       );
   }
@@ -91,6 +102,24 @@ class _EditProductPageState extends State<EditProductPage> {
     }
 
     return number;
+  }
+
+  // ==================================================
+  // تجهيز بيانات المنتج لسجل التدقيق
+  // ==================================================
+
+  Map<String, dynamic> _productAuditValues(Map<String, dynamic> product) {
+    return {
+      'id': product['id'],
+      'name': product['name'],
+      'code': product['code'],
+      'description': product['description'],
+      'purchase_price': product['purchase_price'],
+      'selling_price': product['selling_price'],
+      'stock_quantity': product['stock_quantity'],
+      'min_stock_quantity': product['min_stock_quantity'],
+      'is_active': product['is_active'],
+    };
   }
 
   // ==================================================
@@ -149,14 +178,25 @@ class _EditProductPageState extends State<EditProductPage> {
       final db = await DatabaseHelper.instance.database;
       final now = DateTime.now().toIso8601String();
 
+      Map<String, dynamic>? oldProductForAudit;
+      Map<String, dynamic>? newProductForAudit;
+
       await db.transaction((txn) async {
-        // ----------------------------------------------
-        // التأكد من وجود المنتج وأنه نشط
-        // ----------------------------------------------
+        // التأكد من وجود المنتج وقراءة بياناته القديمة.
 
         final existingProducts = await txn.query(
           'products',
-          columns: ['id', 'stock_quantity', 'is_active'],
+          columns: [
+            'id',
+            'name',
+            'code',
+            'description',
+            'purchase_price',
+            'selling_price',
+            'stock_quantity',
+            'min_stock_quantity',
+            'is_active',
+          ],
           where: 'id = ?',
           whereArgs: [productIdValue],
           limit: 1,
@@ -166,15 +206,15 @@ class _EditProductPageState extends State<EditProductPage> {
           throw Exception('المنتج غير موجود في قاعدة البيانات');
         }
 
-        final existingProduct = existingProducts.first;
+        final existingProduct = Map<String, dynamic>.from(
+          existingProducts.first,
+        );
 
         if ((existingProduct['is_active'] as num?)?.toInt() != 1) {
           throw Exception('لا يمكن تعديل منتج غير نشط');
         }
 
-        // ----------------------------------------------
-        // التحقق من عدم تكرار كود المنتج
-        // ----------------------------------------------
+        // التحقق من عدم تكرار كود المنتج.
 
         if (codeText.isNotEmpty) {
           final duplicateCodes = await txn.query(
@@ -190,9 +230,7 @@ class _EditProductPageState extends State<EditProductPage> {
           }
         }
 
-        // ----------------------------------------------
-        // قراءة الكمية الحالية من قاعدة البيانات
-        // ----------------------------------------------
+        // قراءة الكمية الحالية من قاعدة البيانات.
 
         final oldQuantityValue = existingProduct['stock_quantity'];
 
@@ -204,9 +242,23 @@ class _EditProductPageState extends State<EditProductPage> {
           throw Exception('الكمية الحالية في قاعدة البيانات غير صحيحة');
         }
 
-        // ----------------------------------------------
-        // تحديث بيانات المنتج
-        // ----------------------------------------------
+        // تجهيز البيانات القديمة والجديدة للتدقيق.
+
+        oldProductForAudit = _productAuditValues(existingProduct);
+
+        newProductForAudit = {
+          'id': productIdValue,
+          'name': name,
+          'code': codeText.isEmpty ? null : codeText,
+          'description': descriptionText.isEmpty ? null : descriptionText,
+          'purchase_price': purchasePrice,
+          'selling_price': sellingPrice,
+          'stock_quantity': quantity,
+          'min_stock_quantity': minQuantity,
+          'is_active': 1,
+        };
+
+        // تحديث بيانات المنتج.
 
         final updatedRows = await txn.update(
           'products',
@@ -228,9 +280,7 @@ class _EditProductPageState extends State<EditProductPage> {
           throw Exception('تعذر تحديث بيانات المنتج');
         }
 
-        // ----------------------------------------------
-        // تسجيل حركة مخزون إذا تغيرت الكمية
-        // ----------------------------------------------
+        // تسجيل حركة مخزون إذا تغيرت الكمية.
 
         if (quantity != oldQuantity) {
           final difference = quantity - oldQuantity;
@@ -247,12 +297,33 @@ class _EditProductPageState extends State<EditProductPage> {
         }
       });
 
+      // تسجيل التعديل في سجل التدقيق بعد نجاح المعاملة.
+
+      try {
+        if (oldProductForAudit != null && newProductForAudit != null) {
+          await DatabaseHelper.instance.addAuditLog(
+            action: 'update',
+            entityType: 'product',
+            entityId: productIdValue,
+            description: 'تم تعديل بيانات المنتج: $name',
+            oldValues: oldProductForAudit,
+            newValues: newProductForAudit,
+          );
+        }
+      } catch (auditError, stackTrace) {
+        // لا نعتبر تحديث المنتج فاشلاً إذا تعذر تسجيل التدقيق.
+        debugPrint('تعذر تسجيل تعديل المنتج في سجل التدقيق: $auditError');
+        debugPrintStack(stackTrace: stackTrace);
+      }
+
       if (!mounted) return;
 
       _showMessage('تم تعديل المنتج وتحديث سجل المخزون بنجاح');
 
       Navigator.pop(context, true);
     } catch (e) {
+      if (!mounted) return;
+
       final error = e.toString().replaceFirst('Exception: ', '');
 
       _showMessage('تعذر تعديل المنتج: $error', isError: true);
@@ -271,128 +342,207 @@ class _EditProductPageState extends State<EditProductPage> {
 
   @override
   Widget build(BuildContext context) {
+    final baseTheme = Theme.of(context);
+
     return Directionality(
       textDirection: TextDirection.rtl,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text(
-            'تعديل المنتج',
-            style: TextStyle(fontWeight: FontWeight.bold),
+      child: Theme(
+        data: baseTheme.copyWith(
+          scaffoldBackgroundColor: _zeinaBeige,
+          colorScheme: baseTheme.colorScheme.copyWith(
+            primary: _zeinaBurgundy,
+            secondary: _zeinaGold,
+          ),
+          appBarTheme: const AppBarTheme(
+            backgroundColor: _zeinaBurgundy,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            iconTheme: IconThemeData(color: Colors.white),
+            titleTextStyle: TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          inputDecorationTheme: InputDecorationTheme(
+            filled: true,
+            fillColor: Colors.white,
+            labelStyle: const TextStyle(color: _zeinaDarkBurgundy),
+            hintStyle: const TextStyle(color: Colors.grey),
+            prefixIconColor: _zeinaBurgundy,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 16,
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: _zeinaBorder),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: _zeinaBorder),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: _zeinaBurgundy, width: 1.8),
+            ),
+            errorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: Colors.red),
+            ),
+            focusedErrorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: Colors.red, width: 1.5),
+            ),
+          ),
+          elevatedButtonTheme: ElevatedButtonThemeData(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _zeinaBurgundy,
+              foregroundColor: Colors.white,
+              disabledBackgroundColor: _zeinaBurgundy.withValues(alpha: 0.5),
+              disabledForegroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+              textStyle: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
         ),
-        body: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildSectionTitle('بيانات المنتج'),
+        child: Scaffold(
+          appBar: AppBar(title: const Text('تعديل المنتج')),
 
-                const SizedBox(height: 16),
+          // زر القائمة الجانبية يظهر تلقائيًا في AppBar.
+          drawer: const Drawer(backgroundColor: _zeinaBeige, child: Sidebar()),
 
-                _buildTextField(
-                  controller: _nameController,
-                  label: 'اسم المنتج',
-                  hint: 'أدخل اسم المنتج',
-                  icon: Icons.inventory_2_outlined,
-                  required: true,
-                ),
+          body: Form(
+            key: _formKey,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildPageHeader(),
 
-                const SizedBox(height: 14),
+                  const SizedBox(height: 24),
 
-                _buildTextField(
-                  controller: _codeController,
-                  label: 'الكود / الباركود',
-                  hint: 'اختياري',
-                  icon: Icons.qr_code_2,
-                ),
-
-                const SizedBox(height: 14),
-
-                _buildTextField(
-                  controller: _descriptionController,
-                  label: 'الوصف',
-                  hint: 'وصف المنتج',
-                  icon: Icons.description_outlined,
-                  maxLines: 3,
-                ),
-
-                const SizedBox(height: 24),
-
-                _buildSectionTitle('الأسعار'),
-
-                const SizedBox(height: 16),
-
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildNumberField(
-                        controller: _purchasePriceController,
-                        label: 'سعر الشراء',
-                        hint: '0',
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildNumberField(
-                        controller: _sellingPriceController,
-                        label: 'سعر البيع',
-                        hint: '0',
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 24),
-
-                _buildSectionTitle('المخزون'),
-
-                const SizedBox(height: 16),
-
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildNumberField(
-                        controller: _quantityController,
-                        label: 'الكمية الحالية',
-                        hint: '0',
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildNumberField(
-                        controller: _minQuantityController,
-                        label: 'الحد الأدنى',
-                        hint: '0',
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 30),
-
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: ElevatedButton.icon(
-                    onPressed: _isSaving ? null : _updateProduct,
-                    icon: _isSaving
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Icon(Icons.save_outlined),
-                    label: Text(_isSaving ? 'جاري الحفظ...' : 'حفظ التعديلات'),
+                  _buildSectionTitle(
+                    'بيانات المنتج',
+                    Icons.inventory_2_outlined,
                   ),
-                ),
 
-                const SizedBox(height: 20),
-              ],
+                  const SizedBox(height: 16),
+
+                  _buildTextField(
+                    controller: _nameController,
+                    label: 'اسم المنتج',
+                    hint: 'أدخل اسم المنتج',
+                    icon: Icons.inventory_2_outlined,
+                    required: true,
+                  ),
+
+                  const SizedBox(height: 14),
+
+                  _buildTextField(
+                    controller: _codeController,
+                    label: 'الكود / الباركود',
+                    hint: 'اختياري',
+                    icon: Icons.qr_code_2_rounded,
+                  ),
+
+                  const SizedBox(height: 14),
+
+                  _buildTextField(
+                    controller: _descriptionController,
+                    label: 'الوصف',
+                    hint: 'وصف المنتج',
+                    icon: Icons.description_outlined,
+                    maxLines: 3,
+                  ),
+
+                  const SizedBox(height: 26),
+
+                  _buildSectionTitle('الأسعار', Icons.payments_outlined),
+
+                  const SizedBox(height: 16),
+
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: _buildNumberField(
+                          controller: _purchasePriceController,
+                          label: 'سعر الشراء',
+                          hint: '0',
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildNumberField(
+                          controller: _sellingPriceController,
+                          label: 'سعر البيع',
+                          hint: '0',
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 26),
+
+                  _buildSectionTitle('المخزون', Icons.warehouse_outlined),
+
+                  const SizedBox(height: 16),
+
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: _buildNumberField(
+                          controller: _quantityController,
+                          label: 'الكمية الحالية',
+                          hint: '0',
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildNumberField(
+                          controller: _minQuantityController,
+                          label: 'الحد الأدنى',
+                          hint: '0',
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 30),
+
+                  SizedBox(
+                    width: double.infinity,
+                    height: 54,
+                    child: ElevatedButton.icon(
+                      onPressed: _isSaving ? null : _updateProduct,
+                      icon: _isSaving
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.save_outlined),
+                      label: Text(
+                        _isSaving ? 'جاري الحفظ...' : 'حفظ التعديلات',
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 20),
+                ],
+              ),
             ),
           ),
         ),
@@ -401,13 +551,98 @@ class _EditProductPageState extends State<EditProductPage> {
   }
 
   // ==================================================
+  // رأس الصفحة
+  // ==================================================
+
+  Widget _buildPageHeader() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [_zeinaBurgundy, _zeinaDarkBurgundy],
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: _zeinaBurgundy.withValues(alpha: 0.14),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 54,
+            height: 54,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: _zeinaGold.withValues(alpha: 0.8)),
+            ),
+            child: const Icon(
+              Icons.edit_note_rounded,
+              color: _zeinaGold,
+              size: 32,
+            ),
+          ),
+          const SizedBox(width: 14),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'تعديل بيانات المنتج',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 19,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                SizedBox(height: 6),
+                Text(
+                  'حدّث بيانات المنتج والأسعار والمخزون',
+                  style: TextStyle(color: _zeinaLightBeige, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ==================================================
   // عنوان القسم
   // ==================================================
 
-  Widget _buildSectionTitle(String title) {
-    return Text(
-      title,
-      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+  Widget _buildSectionTitle(String title, IconData icon) {
+    return Row(
+      children: [
+        Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: _zeinaLightBeige,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: _zeinaBurgundy, size: 21),
+        ),
+        const SizedBox(width: 10),
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.bold,
+            color: _zeinaDarkBurgundy,
+          ),
+        ),
+        const SizedBox(width: 12),
+        const Expanded(child: Divider(color: _zeinaBorder, thickness: 1)),
+      ],
     );
   }
 
@@ -431,6 +666,7 @@ class _EditProductPageState extends State<EditProductPage> {
         labelText: label,
         hintText: hint,
         prefixIcon: Icon(icon),
+        alignLabelWithHint: maxLines > 1,
       ),
       validator: required
           ? (value) {
@@ -463,7 +699,7 @@ class _EditProductPageState extends State<EditProductPage> {
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
-        prefixIcon: const Icon(Icons.numbers),
+        prefixIcon: const Icon(Icons.numbers_rounded),
       ),
       validator: (value) {
         if (value == null || value.trim().isEmpty) {

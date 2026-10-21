@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+
 import '../../database/database_helper.dart';
+import '../../widgets/sidebar.dart';
+import 'marketer_report_page.dart';
 
 class MarketerTreePage extends StatefulWidget {
   const MarketerTreePage({super.key});
@@ -9,6 +12,13 @@ class MarketerTreePage extends StatefulWidget {
 }
 
 class _MarketersPageState extends State<MarketerTreePage> {
+  static const Color _burgundy = Color(0xFF70263D);
+  static const Color _darkBurgundy = Color(0xFF4E192C);
+  static const Color _gold = Color(0xFFC5A15A);
+  static const Color _beige = Color(0xFFFAF5EC);
+  static const Color _lightBeige = Color(0xFFF2E7D5);
+  static const Color _borderColor = Color(0xFFE8DCCB);
+
   final DatabaseHelper _database = DatabaseHelper.instance;
 
   List<Map<String, dynamic>> _marketers = [];
@@ -67,10 +77,7 @@ class _MarketersPageState extends State<MarketerTreePage> {
 
       setState(() {
         _marketers = marketers;
-
-        // إزالة الفروع المفتوحة التي لم تعد موجودة.
         _expandedMarketers.removeWhere((id) => !activeIds.contains(id));
-
         _isLoading = false;
       });
     } catch (e) {
@@ -82,6 +89,21 @@ class _MarketersPageState extends State<MarketerTreePage> {
         SnackBar(content: Text('حدث خطأ أثناء تحميل المسوقين: $e')),
       );
     }
+  }
+
+  Future<void> _openReport(Map<String, dynamic> marketer) async {
+    final marketerId = _toInt(marketer['id']);
+    if (marketerId == null) return;
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MarketerReportPage(
+          marketerId: marketerId,
+          marketerName: marketer['name']?.toString() ?? 'المسوق',
+        ),
+      ),
+    );
   }
 
   Future<void> _openAddMarketer() async {
@@ -125,6 +147,10 @@ class _MarketersPageState extends State<MarketerTreePage> {
             child: const Text('إلغاء'),
           ),
           ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _burgundy,
+              foregroundColor: Colors.white,
+            ),
             onPressed: () => Navigator.pop(context, true),
             child: const Text('تعطيل'),
           ),
@@ -174,12 +200,9 @@ class _MarketersPageState extends State<MarketerTreePage> {
 
     final roots = _marketers.where((marketer) {
       final parentId = _toInt(marketer['parent_id']);
-
       return parentId == null || !activeIds.contains(parentId);
     }).toList();
 
-    // في حالة وجود بيانات قديمة تحتوي على علاقة دائرية،
-    // نعرض المسوقين بدل ترك الشاشة فارغة.
     return roots.isEmpty && _marketers.isNotEmpty ? _marketers : roots;
   }
 
@@ -201,7 +224,6 @@ class _MarketersPageState extends State<MarketerTreePage> {
     final id = _toInt(marketer['id']);
     if (id == null) return const SizedBox.shrink();
 
-    // منع التكرار المرئي إذا احتوت البيانات القديمة على دورة.
     if (ancestors.contains(id)) {
       return const SizedBox.shrink();
     }
@@ -225,119 +247,134 @@ class _MarketersPageState extends State<MarketerTreePage> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Card(
+            color: Colors.white,
             margin: EdgeInsets.zero,
             elevation: 1,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
               side: BorderSide(
                 color: depth == 0
-                    ? const Color(0xFF1E4FA3).withValues(alpha: 0.25)
-                    : Colors.grey.withValues(alpha: 0.18),
+                    ? _burgundy.withValues(alpha: 0.30)
+                    : _borderColor,
               ),
             ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (hasChildren)
-                    IconButton(
-                      tooltip: isExpanded ? 'طيّ الفرع' : 'عرض التابعين',
-                      visualDensity: VisualDensity.compact,
-                      onPressed: () => _toggleExpanded(id),
-                      icon: Icon(
-                        isExpanded
-                            ? Icons.keyboard_arrow_down
-                            : Icons.keyboard_arrow_left,
-                        color: const Color(0xFF1E4FA3),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => _openReport(marketer),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 12,
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (hasChildren)
+                      IconButton(
+                        tooltip: isExpanded ? 'طيّ الفرع' : 'عرض التابعين',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => _toggleExpanded(id),
+                        icon: Icon(
+                          isExpanded
+                              ? Icons.keyboard_arrow_down
+                              : Icons.keyboard_arrow_left,
+                          color: _burgundy,
+                        ),
+                      )
+                    else
+                      const SizedBox(width: 40),
+                    CircleAvatar(
+                      backgroundColor: depth == 0 ? _burgundy : _lightBeige,
+                      foregroundColor: depth == 0 ? Colors.white : _burgundy,
+                      child: Text(
+                        name.isNotEmpty ? name.characters.first : '?',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
-                    )
-                  else
-                    const SizedBox(width: 40),
-                  CircleAvatar(
-                    backgroundColor: depth == 0
-                        ? const Color(0xFF1E4FA3)
-                        : const Color(0xFFEAF1FF),
-                    foregroundColor: depth == 0
-                        ? Colors.white
-                        : const Color(0xFF1E4FA3),
-                    child: Text(
-                      name.isNotEmpty ? name.characters.first : '?',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          name,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        if (phone.isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          _InfoRow(icon: Icons.phone_outlined, text: phone),
-                        ],
-                        const SizedBox(height: 4),
-                        _InfoRow(
-                          icon: Icons.qr_code_2_outlined,
-                          text: code.isEmpty ? 'بدون كود' : 'الكود: $code',
-                        ),
-                        const SizedBox(height: 4),
-                        _InfoRow(
-                          icon: Icons.percent,
-                          text: 'العمولة: ${commission.toStringAsFixed(2)}%',
-                        ),
-                        if (hasChildren) ...[
-                          const SizedBox(height: 5),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                           Text(
-                            'عدد المسوقين التابعين: ${children.length}',
+                            name,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: _darkBurgundy,
+                            ),
+                          ),
+                          if (phone.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            _InfoRow(icon: Icons.phone_outlined, text: phone),
+                          ],
+                          const SizedBox(height: 4),
+                          _InfoRow(
+                            icon: Icons.qr_code_2_outlined,
+                            text: code.isEmpty ? 'بدون كود' : 'الكود: $code',
+                          ),
+                          const SizedBox(height: 4),
+                          _InfoRow(
+                            icon: Icons.percent,
+                            text: 'العمولة: ${commission.toStringAsFixed(2)}%',
+                          ),
+                          if (hasChildren) ...[
+                            const SizedBox(height: 5),
+                            Text(
+                              'عدد المسوقين التابعين: ${children.length}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 5),
+                          const Text(
+                            'اضغط لعرض التقرير',
                             style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey.shade600,
+                              fontSize: 11,
+                              color: _burgundy,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                         ],
+                      ),
+                    ),
+                    PopupMenuButton<String>(
+                      tooltip: 'إجراءات المسوق',
+                      iconColor: _burgundy,
+                      onSelected: (value) {
+                        if (value == 'edit') {
+                          _openEditMarketer(marketer);
+                        } else if (value == 'deactivate') {
+                          _deactivateMarketer(marketer);
+                        }
+                      },
+                      itemBuilder: (context) => const [
+                        PopupMenuItem(
+                          value: 'edit',
+                          child: Row(
+                            children: [
+                              Icon(Icons.edit_outlined, color: _burgundy),
+                              SizedBox(width: 8),
+                              Text('تعديل'),
+                            ],
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: 'deactivate',
+                          child: Row(
+                            children: [
+                              Icon(Icons.delete_outline, color: Colors.red),
+                              SizedBox(width: 8),
+                              Text('تعطيل'),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
-                  ),
-                  PopupMenuButton<String>(
-                    tooltip: 'إجراءات المسوق',
-                    onSelected: (value) {
-                      if (value == 'edit') {
-                        _openEditMarketer(marketer);
-                      } else if (value == 'deactivate') {
-                        _deactivateMarketer(marketer);
-                      }
-                    },
-                    itemBuilder: (context) => const [
-                      PopupMenuItem(
-                        value: 'edit',
-                        child: Row(
-                          children: [
-                            Icon(Icons.edit_outlined),
-                            SizedBox(width: 8),
-                            Text('تعديل'),
-                          ],
-                        ),
-                      ),
-                      PopupMenuItem(
-                        value: 'deactivate',
-                        child: Row(
-                          children: [
-                            Icon(Icons.delete_outline, color: Colors.red),
-                            SizedBox(width: 8),
-                            Text('تعطيل'),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -377,8 +414,16 @@ class _MarketersPageState extends State<MarketerTreePage> {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
+        backgroundColor: _beige,
+        drawer: const Drawer(child: Sidebar()),
         appBar: AppBar(
-          title: const Text('شجرة المسوقين'),
+          backgroundColor: _darkBurgundy,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          title: const Text(
+            'شجرة المسوقين',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
           actions: [
             IconButton(
               tooltip: 'توسيع الفروع',
@@ -394,15 +439,18 @@ class _MarketersPageState extends State<MarketerTreePage> {
           ],
         ),
         floatingActionButton: FloatingActionButton.extended(
+          backgroundColor: _burgundy,
+          foregroundColor: Colors.white,
           onPressed: _openAddMarketer,
           icon: const Icon(Icons.person_add_alt_1),
           label: const Text('إضافة مسوق'),
         ),
         body: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? const Center(child: CircularProgressIndicator(color: _burgundy))
             : _marketers.isEmpty
             ? _buildEmptyState()
             : RefreshIndicator(
+                color: _burgundy,
                 onRefresh: _loadMarketers,
                 child: ListView(
                   padding: const EdgeInsets.all(16),
@@ -411,21 +459,23 @@ class _MarketersPageState extends State<MarketerTreePage> {
                       margin: const EdgeInsets.only(bottom: 16),
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFEAF1FF),
+                        color: _lightBeige,
                         borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: _borderColor),
                       ),
                       child: Row(
                         children: [
-                          const Icon(
-                            Icons.info_outline,
-                            color: Color(0xFF1E4FA3),
-                          ),
+                          const Icon(Icons.info_outline, color: _burgundy),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               'إجمالي المسوقين النشطين: ${_marketers.length}. '
-                              'اضغط السهم لعرض المسوقين التابعين.',
-                              style: const TextStyle(fontSize: 13),
+                              'اضغط على بطاقة المسوق لعرض تقريره، '
+                              'وعلى السهم لعرض التابعين.',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: _darkBurgundy,
+                              ),
                             ),
                           ),
                         ],
@@ -446,11 +496,15 @@ class _MarketersPageState extends State<MarketerTreePage> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.people_outline, size: 70, color: Colors.grey.shade400),
+          const Icon(Icons.people_outline, size: 70, color: _gold),
           const SizedBox(height: 16),
           const Text(
             'لا يوجد مسوقون حاليًا',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: _darkBurgundy,
+            ),
           ),
           const SizedBox(height: 8),
           Text(
@@ -474,6 +528,9 @@ class _MarketerDialog extends StatefulWidget {
 }
 
 class _MarketerDialogState extends State<_MarketerDialog> {
+  static const Color _burgundy = Color(0xFF70263D);
+  static const Color _darkBurgundy = Color(0xFF4E192C);
+
   final _formKey = GlobalKey<FormState>();
 
   final _nameController = TextEditingController();
@@ -608,7 +665,6 @@ class _MarketerDialogState extends State<_MarketerDialog> {
             whereArgs: [marketerId],
           );
 
-          // الحفاظ على سجل الأكواد غير النشطة.
           await txn.update(
             'codes',
             {'is_active': 0},
@@ -703,130 +759,156 @@ class _MarketerDialogState extends State<_MarketerDialog> {
 
     return Directionality(
       textDirection: TextDirection.rtl,
-      child: AlertDialog(
-        title: Text(_isEditing ? 'تعديل المسوق' : 'إضافة مسوق'),
-        content: SizedBox(
-          width: 500,
-          child: SingleChildScrollView(
-            child: Form(
-              key: _formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextFormField(
-                    controller: _nameController,
-                    decoration: const InputDecoration(
-                      labelText: 'اسم المسوق',
-                      hintText: 'أدخل اسم المسوق',
-                      prefixIcon: Icon(Icons.person_outline),
-                    ),
-                    textInputAction: TextInputAction.next,
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'اسم المسوق مطلوب';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 14),
-                  TextFormField(
-                    controller: _phoneController,
-                    decoration: const InputDecoration(
-                      labelText: 'رقم الهاتف',
-                      hintText: 'اختياري',
-                      prefixIcon: Icon(Icons.phone_outlined),
-                    ),
-                    keyboardType: TextInputType.phone,
-                    textInputAction: TextInputAction.next,
-                  ),
-                  const SizedBox(height: 14),
-                  TextFormField(
-                    controller: _codeController,
-                    decoration: const InputDecoration(
-                      labelText: 'كود المسوق',
-                      hintText: 'اختياري',
-                      prefixIcon: Icon(Icons.qr_code_2_outlined),
-                    ),
-                    textInputAction: TextInputAction.next,
-                  ),
-                  const SizedBox(height: 14),
-                  DropdownButtonFormField<int?>(
-                    value: _selectedParentId,
-                    decoration: const InputDecoration(
-                      labelText: 'المسوق الأب',
-                      prefixIcon: Icon(Icons.account_tree_outlined),
-                    ),
-                    items: [
-                      const DropdownMenuItem<int?>(
-                        value: null,
-                        child: Text('بدون مسوق أب'),
-                      ),
-                      ...parentOptions.map((parent) {
-                        final parentId = _toInt(parent['id']);
-
-                        return DropdownMenuItem<int?>(
-                          value: parentId,
-                          child: Text(parent['name']?.toString() ?? '-'),
-                        );
-                      }),
-                    ],
-                    onChanged: _isSaving
-                        ? null
-                        : (value) {
-                            setState(() => _selectedParentId = value);
-                          },
-                  ),
-                  const SizedBox(height: 14),
-                  TextFormField(
-                    controller: _commissionController,
-                    decoration: const InputDecoration(
-                      labelText: 'نسبة العمولة',
-                      hintText: 'مثال: 5',
-                      prefixIcon: Icon(Icons.percent),
-                      suffixText: '%',
-                    ),
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'نسبة العمولة مطلوبة';
-                      }
-
-                      final commission = double.tryParse(value.trim());
-
-                      if (commission == null) {
-                        return 'أدخل رقمًا صحيحًا';
-                      }
-
-                      if (commission < 0 || commission > 100) {
-                        return 'النسبة يجب أن تكون بين 0 و100';
-                      }
-
-                      return null;
-                    },
-                  ),
-                ],
-              ),
+      child: Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: Theme.of(context).colorScheme.copyWith(
+            primary: _burgundy,
+            secondary: const Color(0xFFC5A15A),
+          ),
+          inputDecorationTheme: const InputDecorationTheme(
+            focusedBorder: OutlineInputBorder(
+              borderSide: BorderSide(color: _burgundy, width: 1.5),
             ),
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: _isSaving ? null : () => Navigator.pop(context, false),
-            child: const Text('إلغاء'),
+        child: AlertDialog(
+          title: Text(
+            _isEditing ? 'تعديل المسوق' : 'إضافة مسوق',
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              color: _darkBurgundy,
+            ),
           ),
-          ElevatedButton(
-            onPressed: _isSaving ? null : _save,
-            child: _isSaving
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Text(_isEditing ? 'حفظ التعديلات' : 'إضافة'),
+          content: SizedBox(
+            width: 500,
+            child: SingleChildScrollView(
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextFormField(
+                      controller: _nameController,
+                      decoration: const InputDecoration(
+                        labelText: 'اسم المسوق',
+                        hintText: 'أدخل اسم المسوق',
+                        prefixIcon: Icon(Icons.person_outline),
+                      ),
+                      textInputAction: TextInputAction.next,
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'اسم المسوق مطلوب';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    TextFormField(
+                      controller: _phoneController,
+                      decoration: const InputDecoration(
+                        labelText: 'رقم الهاتف',
+                        hintText: 'اختياري',
+                        prefixIcon: Icon(Icons.phone_outlined),
+                      ),
+                      keyboardType: TextInputType.phone,
+                      textInputAction: TextInputAction.next,
+                    ),
+                    const SizedBox(height: 14),
+                    TextFormField(
+                      controller: _codeController,
+                      decoration: const InputDecoration(
+                        labelText: 'كود المسوق',
+                        hintText: 'اختياري',
+                        prefixIcon: Icon(Icons.qr_code_2_outlined),
+                      ),
+                      textInputAction: TextInputAction.next,
+                    ),
+                    const SizedBox(height: 14),
+                    DropdownButtonFormField<int?>(
+                      value: _selectedParentId,
+                      decoration: const InputDecoration(
+                        labelText: 'المسوق الأب',
+                        prefixIcon: Icon(Icons.account_tree_outlined),
+                      ),
+                      items: [
+                        const DropdownMenuItem<int?>(
+                          value: null,
+                          child: Text('بدون مسوق أب'),
+                        ),
+                        ...parentOptions.map((parent) {
+                          final parentId = _toInt(parent['id']);
+
+                          return DropdownMenuItem<int?>(
+                            value: parentId,
+                            child: Text(parent['name']?.toString() ?? '-'),
+                          );
+                        }),
+                      ],
+                      onChanged: _isSaving
+                          ? null
+                          : (value) {
+                              setState(() => _selectedParentId = value);
+                            },
+                    ),
+                    const SizedBox(height: 14),
+                    TextFormField(
+                      controller: _commissionController,
+                      decoration: const InputDecoration(
+                        labelText: 'نسبة العمولة',
+                        hintText: 'مثال: 5',
+                        prefixIcon: Icon(Icons.percent),
+                        suffixText: '%',
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'نسبة العمولة مطلوبة';
+                        }
+
+                        final commission = double.tryParse(value.trim());
+
+                        if (commission == null) {
+                          return 'أدخل رقمًا صحيحًا';
+                        }
+
+                        if (commission < 0 || commission > 100) {
+                          return 'النسبة يجب أن تكون بين 0 و100';
+                        }
+
+                        return null;
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
-        ],
+          actions: [
+            TextButton(
+              onPressed: _isSaving ? null : () => Navigator.pop(context, false),
+              child: const Text('إلغاء'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _burgundy,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: _isSaving ? null : _save,
+              child: _isSaving
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : Text(_isEditing ? 'حفظ التعديلات' : 'إضافة'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -845,7 +927,7 @@ class _InfoRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 16, color: Colors.grey.shade600),
+          Icon(icon, size: 16, color: const Color(0xFF70263D)),
           const SizedBox(width: 6),
           Expanded(
             child: Text(

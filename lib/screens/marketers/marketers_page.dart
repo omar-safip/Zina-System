@@ -1,6 +1,15 @@
 import 'package:flutter/material.dart';
 
 import '../../database/database_helper.dart';
+import '../../widgets/sidebar.dart';
+
+// ألوان هوية ZEINA
+const Color _zeinaBurgundy = Color(0xFF70263D);
+const Color _zeinaDarkBurgundy = Color(0xFF4D192B);
+const Color _zeinaGold = Color(0xFFC5A15A);
+const Color _zeinaBeige = Color(0xFFFAF5EC);
+const Color _zeinaLightBeige = Color(0xFFF2E7D5);
+const Color _zeinaBorder = Color(0xFFE8DCCB);
 
 class MarketersPage extends StatefulWidget {
   const MarketersPage({super.key});
@@ -160,7 +169,6 @@ class _MarketersPageState extends State<MarketersPage> {
 
       await DatabaseHelper.instance.detachMarketer(marketerId as int);
 
-      // تسجيل التعطيل بعد نجاح العملية الأساسية.
       try {
         await DatabaseHelper.instance.addAuditLog(
           action: 'deactivate',
@@ -202,74 +210,154 @@ class _MarketersPageState extends State<MarketersPage> {
   Widget build(BuildContext context) {
     final filteredMarketers = _filteredMarketers;
 
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text(
-            'المسوقون',
-            style: TextStyle(fontWeight: FontWeight.bold),
+    final baseTheme = Theme.of(context);
+    final zeinaTheme = baseTheme.copyWith(
+      scaffoldBackgroundColor: _zeinaBeige,
+      colorScheme: baseTheme.colorScheme.copyWith(
+        primary: _zeinaBurgundy,
+        secondary: _zeinaGold,
+        surface: Colors.white,
+      ),
+      appBarTheme: const AppBarTheme(
+        backgroundColor: _zeinaDarkBurgundy,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: false,
+        iconTheme: IconThemeData(color: Colors.white),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: Colors.white,
+        prefixIconColor: _zeinaBurgundy,
+        suffixIconColor: _zeinaBurgundy,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: _zeinaBorder),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: _zeinaBorder),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: _zeinaBurgundy, width: 1.5),
+        ),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: _zeinaBurgundy,
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
           ),
         ),
-        body: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : RefreshIndicator(
-                onRefresh: _loadMarketers,
-                child: Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                      child: TextField(
-                        controller: _searchController,
-                        decoration: InputDecoration(
-                          hintText:
-                              'بحث بالاسم أو رقم المسوق أو الكود أو رقم الداعي أو كوده',
-                          prefixIcon: const Icon(Icons.search),
-                          suffixIcon: _searchController.text.isNotEmpty
-                              ? IconButton(
-                                  onPressed: _searchController.clear,
-                                  icon: const Icon(Icons.clear),
-                                )
-                              : null,
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(foregroundColor: _zeinaBurgundy),
+      ),
+      floatingActionButtonTheme: const FloatingActionButtonThemeData(
+        backgroundColor: _zeinaBurgundy,
+        foregroundColor: Colors.white,
+      ),
+      progressIndicatorTheme: const ProgressIndicatorThemeData(
+        color: _zeinaBurgundy,
+      ),
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return _zeinaBurgundy;
+          }
+          return null;
+        }),
+        trackColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return _zeinaBurgundy.withValues(alpha: 0.25);
+          }
+          return null;
+        }),
+      ),
+    );
+
+    return Theme(
+      data: zeinaTheme,
+      child: Directionality(
+        textDirection: TextDirection.rtl,
+        child: Scaffold(
+          backgroundColor: _zeinaBeige,
+          appBar: AppBar(
+            title: const Text(
+              'المسوقون',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+          drawer: const Drawer(backgroundColor: _zeinaBeige, child: Sidebar()),
+          body: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : RefreshIndicator(
+                  color: _zeinaBurgundy,
+                  onRefresh: _loadMarketers,
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                        child: TextField(
+                          controller: _searchController,
+                          decoration: InputDecoration(
+                            hintText:
+                                'بحث بالاسم أو رقم المسوق أو الكود أو رقم الداعي أو كوده',
+                            prefixIcon: const Icon(Icons.search),
+                            suffixIcon: _searchController.text.isNotEmpty
+                                ? IconButton(
+                                    onPressed: _searchController.clear,
+                                    icon: const Icon(Icons.clear),
+                                  )
+                                : null,
+                          ),
                         ),
                       ),
-                    ),
-                    Expanded(
-                      child: filteredMarketers.isEmpty
-                          ? _buildEmptyState(
-                              isSearchResult: _searchController.text
-                                  .trim()
-                                  .isNotEmpty,
-                            )
-                          : ListView.builder(
-                              physics: const AlwaysScrollableScrollPhysics(),
-                              padding: const EdgeInsets.all(16),
-                              itemCount: filteredMarketers.length,
-                              itemBuilder: (context, index) =>
-                                  _buildMarketerCard(filteredMarketers[index]),
-                            ),
-                    ),
-                  ],
+                      Expanded(
+                        child: filteredMarketers.isEmpty
+                            ? _buildEmptyState(
+                                isSearchResult: _searchController.text
+                                    .trim()
+                                    .isNotEmpty,
+                              )
+                            : ListView.builder(
+                                physics: const AlwaysScrollableScrollPhysics(),
+                                padding: const EdgeInsets.all(16),
+                                itemCount: filteredMarketers.length,
+                                itemBuilder: (context, index) =>
+                                    _buildMarketerCard(
+                                      filteredMarketers[index],
+                                    ),
+                              ),
+                      ),
+                    ],
+                  ),
                 ),
+          floatingActionButton: Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            alignment: WrapAlignment.end,
+            children: [
+              FloatingActionButton.extended(
+                heroTag: 'manage_codes',
+                backgroundColor: _zeinaGold,
+                foregroundColor: _zeinaDarkBurgundy,
+                onPressed: _openCodesManagement,
+                icon: const Icon(Icons.numbers_outlined),
+                label: const Text('إدارة الأرقام'),
               ),
-        floatingActionButton: Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          alignment: WrapAlignment.end,
-          children: [
-            FloatingActionButton.extended(
-              heroTag: 'manage_codes',
-              onPressed: _openCodesManagement,
-              icon: const Icon(Icons.numbers_outlined),
-              label: const Text('إدارة الأرقام'),
-            ),
-            FloatingActionButton.extended(
-              heroTag: 'add_marketer',
-              onPressed: _addMarketer,
-              icon: const Icon(Icons.person_add_outlined),
-              label: const Text('إضافة مسوق'),
-            ),
-          ],
+              FloatingActionButton.extended(
+                heroTag: 'add_marketer',
+                backgroundColor: _zeinaBurgundy,
+                foregroundColor: Colors.white,
+                onPressed: _addMarketer,
+                icon: const Icon(Icons.person_add_outlined),
+                label: const Text('إضافة مسوق'),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -284,7 +372,7 @@ class _MarketersPageState extends State<MarketersPage> {
         Icon(
           isSearchResult ? Icons.search_off : Icons.people_outline,
           size: 70,
-          color: Colors.grey.shade400,
+          color: _zeinaGold,
         ),
         const SizedBox(height: 18),
         Center(
@@ -334,10 +422,10 @@ class _MarketersPageState extends State<MarketersPage> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: _zeinaBorder),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
+            color: _zeinaDarkBurgundy.withValues(alpha: 0.04),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -352,13 +440,10 @@ class _MarketersPageState extends State<MarketersPage> {
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE8F0FF),
+                  color: _zeinaLightBeige,
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(
-                  Icons.person_outline,
-                  color: Color(0xFF1E4FA3),
-                ),
+                child: const Icon(Icons.person_outline, color: _zeinaBurgundy),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -402,7 +487,7 @@ class _MarketersPageState extends State<MarketersPage> {
                           const Icon(
                             Icons.account_tree_outlined,
                             size: 15,
-                            color: Color(0xFF1E4FA3),
+                            color: _zeinaBurgundy,
                           ),
                           const SizedBox(width: 5),
                           Expanded(
@@ -466,7 +551,7 @@ class _MarketersPageState extends State<MarketersPage> {
             ],
           ),
           const SizedBox(height: 16),
-          const Divider(height: 1),
+          const Divider(height: 1, color: _zeinaBorder),
           const SizedBox(height: 14),
           Row(
             children: [
@@ -477,7 +562,7 @@ class _MarketersPageState extends State<MarketersPage> {
                   value: marketerNumber,
                 ),
               ),
-              Container(width: 1, height: 35, color: const Color(0xFFE5E7EB)),
+              Container(width: 1, height: 35, color: _zeinaBorder),
               Expanded(
                 child: _buildInfoItem(
                   icon: Icons.badge_outlined,
@@ -485,7 +570,7 @@ class _MarketersPageState extends State<MarketersPage> {
                   value: code,
                 ),
               ),
-              Container(width: 1, height: 35, color: const Color(0xFFE5E7EB)),
+              Container(width: 1, height: 35, color: _zeinaBorder),
               Expanded(
                 child: _buildInfoItem(
                   icon: Icons.percent,
@@ -501,14 +586,15 @@ class _MarketersPageState extends State<MarketersPage> {
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
               decoration: BoxDecoration(
-                color: const Color(0xFFE8F5E9),
+                color: _zeinaLightBeige,
                 borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: _zeinaGold.withValues(alpha: 0.6)),
               ),
               child: Row(
                 children: [
                   const Icon(
                     Icons.account_tree_outlined,
-                    color: Color(0xFF2E7D32),
+                    color: _zeinaBurgundy,
                     size: 19,
                   ),
                   const SizedBox(width: 8),
@@ -519,7 +605,7 @@ class _MarketersPageState extends State<MarketersPage> {
                       'مبيعات التابع المباشر',
                       style: const TextStyle(
                         fontSize: 12,
-                        color: Color(0xFF2E7D32),
+                        color: _zeinaDarkBurgundy,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -541,7 +627,8 @@ class _MarketersPageState extends State<MarketersPage> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Icon(icon, size: 19, color: const Color(0xFF1E4FA3)),
+        const SizedBox.shrink(),
+        Icon(icon, size: 19, color: _zeinaBurgundy),
         const SizedBox(width: 5),
         Flexible(
           child: Column(
@@ -711,7 +798,6 @@ class _CodesManagementDialogState extends State<_CodesManagementDialog> {
         isActive: false,
       );
 
-      // تسجيل تعطيل الرقم والكود.
       try {
         await DatabaseHelper.instance.addAuditLog(
           action: 'deactivate',
@@ -757,6 +843,8 @@ class _CodesManagementDialogState extends State<_CodesManagementDialog> {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Dialog(
+        backgroundColor: _zeinaBeige,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         child: SizedBox(
           width: 700,
           height: 600,
@@ -772,6 +860,7 @@ class _CodesManagementDialogState extends State<_CodesManagementDialog> {
                         style: TextStyle(
                           fontSize: 19,
                           fontWeight: FontWeight.bold,
+                          color: _zeinaDarkBurgundy,
                         ),
                       ),
                     ),
@@ -782,7 +871,7 @@ class _CodesManagementDialogState extends State<_CodesManagementDialog> {
                   ],
                 ),
               ),
-              const Divider(height: 1),
+              const Divider(height: 1, color: _zeinaBorder),
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: LayoutBuilder(
@@ -875,7 +964,7 @@ class _CodesManagementDialogState extends State<_CodesManagementDialog> {
             Icon(
               searching ? Icons.search_off : Icons.numbers_outlined,
               size: 60,
-              color: Colors.grey.shade400,
+              color: _zeinaGold,
             ),
             const SizedBox(height: 15),
             Text(
@@ -909,7 +998,7 @@ class _CodesManagementDialogState extends State<_CodesManagementDialog> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: _zeinaBorder),
       ),
       child: Row(
         children: [
@@ -917,12 +1006,12 @@ class _CodesManagementDialogState extends State<_CodesManagementDialog> {
             width: 45,
             height: 45,
             decoration: BoxDecoration(
-              color: isUsed ? Colors.grey.shade100 : const Color(0xFFE8F0FF),
+              color: isUsed ? _zeinaBeige : _zeinaLightBeige,
               borderRadius: BorderRadius.circular(11),
             ),
             child: Icon(
               Icons.badge_outlined,
-              color: isUsed ? Colors.grey : const Color(0xFF1E4FA3),
+              color: isUsed ? Colors.grey : _zeinaBurgundy,
             ),
           ),
           const SizedBox(width: 12),
@@ -983,19 +1072,19 @@ class _CodesManagementDialogState extends State<_CodesManagementDialog> {
                     ],
                   )
                 else
-                  Row(
+                  const Row(
                     children: [
                       Icon(
                         Icons.check_circle_outline,
                         size: 14,
-                        color: Colors.green.shade600,
+                        color: _zeinaBurgundy,
                       ),
-                      const SizedBox(width: 5),
+                      SizedBox(width: 5),
                       Text(
                         'متاح',
                         style: TextStyle(
                           fontSize: 12,
-                          color: Colors.green.shade700,
+                          color: _zeinaBurgundy,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -1008,7 +1097,7 @@ class _CodesManagementDialogState extends State<_CodesManagementDialog> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
             decoration: BoxDecoration(
-              color: isUsed ? Colors.blue.shade50 : Colors.green.shade50,
+              color: isUsed ? _zeinaLightBeige : _zeinaBeige,
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(
@@ -1017,7 +1106,7 @@ class _CodesManagementDialogState extends State<_CodesManagementDialog> {
               style: TextStyle(
                 fontSize: 10,
                 fontWeight: FontWeight.bold,
-                color: isUsed ? Colors.blue.shade700 : Colors.green.shade700,
+                color: isUsed ? _zeinaDarkBurgundy : _zeinaBurgundy,
               ),
             ),
           ),
@@ -1117,7 +1206,6 @@ class _CodeDialogState extends State<_CodeDialog> {
           code: code,
         );
 
-        // تسجيل تعديل الرقم والكود بعد نجاح التعديل.
         try {
           await DatabaseHelper.instance.addAuditLog(
             action: 'update',
@@ -1139,7 +1227,6 @@ class _CodeDialogState extends State<_CodeDialog> {
           code: code,
         );
 
-        // تسجيل إضافة رقم وكود جديدين.
         try {
           await DatabaseHelper.instance.addAuditLog(
             action: 'create',
@@ -1182,9 +1269,14 @@ class _CodeDialogState extends State<_CodeDialog> {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: AlertDialog(
+        backgroundColor: _zeinaBeige,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         title: Text(
           _isEditing ? 'تعديل رقم وكود' : 'إضافة رقم وكود',
-          style: const TextStyle(fontWeight: FontWeight.bold),
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            color: _zeinaDarkBurgundy,
+          ),
         ),
         content: SizedBox(
           width: 420,
@@ -1544,12 +1636,10 @@ class _MarketerDialogState extends State<_MarketerDialog> {
           double.tryParse(_commissionController.text.trim()) ?? 0;
       final now = DateTime.now().toIso8601String();
 
-      // الاحتفاظ بالبيانات القديمة قبل تعديلها.
       final Map<String, dynamic>? oldValues = _isEditing
           ? Map<String, dynamic>.from(widget.marketer!)
           : null;
 
-      // سيتم تعيينه عند الإضافة أو التعديل لتسجيل العملية لاحقًا.
       int? savedMarketerId;
 
       await db.transaction((txn) async {
@@ -1676,9 +1766,6 @@ class _MarketerDialogState extends State<_MarketerDialog> {
         }
       });
 
-      // تسجيل العملية بعد نجاح المعاملة بالكامل.
-      // يشمل السجل تغيير رقم وكود المسوق عند التعديل.
-      // فشل التدقيق لا يلغي نجاح حفظ المسوق.
       try {
         final marketerId = savedMarketerId;
 
@@ -1740,9 +1827,14 @@ class _MarketerDialogState extends State<_MarketerDialog> {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: AlertDialog(
+        backgroundColor: _zeinaBeige,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         title: Text(
           _isEditing ? 'تعديل المسوق' : 'إضافة مسوق',
-          style: const TextStyle(fontWeight: FontWeight.bold),
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            color: _zeinaDarkBurgundy,
+          ),
         ),
         content: SizedBox(
           width: 450,
@@ -1840,12 +1932,10 @@ class _MarketerDialogState extends State<_MarketerDialog> {
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF5F7FB),
+        color: _zeinaLightBeige,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: _receivesReferralCommission
-              ? const Color(0xFF1E4FA3)
-              : const Color(0xFFE5E7EB),
+          color: _receivesReferralCommission ? _zeinaBurgundy : _zeinaBorder,
         ),
       ),
       child: Column(
@@ -1855,14 +1945,18 @@ class _MarketerDialogState extends State<_MarketerDialog> {
             children: [
               Icon(
                 Icons.account_tree_outlined,
-                color: Color(0xFF1E4FA3),
+                color: _zeinaBurgundy,
                 size: 21,
               ),
               SizedBox(width: 8),
               Expanded(
                 child: Text(
                   'عمولة التبعية',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                    color: _zeinaDarkBurgundy,
+                  ),
                 ),
               ),
             ],
@@ -1892,7 +1986,7 @@ class _MarketerDialogState extends State<_MarketerDialog> {
               style: const TextStyle(fontSize: 11),
             ),
             value: _receivesReferralCommission,
-            activeColor: const Color(0xFF1E4FA3),
+            activeColor: _zeinaBurgundy,
             onChanged: _isSaving
                 ? null
                 : (value) {
@@ -2021,15 +2115,15 @@ class _MarketerDialogState extends State<_MarketerDialog> {
         width: double.infinity,
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: Colors.orange.shade50,
+          color: _zeinaLightBeige,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colors.orange.shade200),
+          border: Border.all(color: _zeinaGold),
         ),
-        child: Row(
+        child: const Row(
           children: [
-            Icon(Icons.warning_amber_outlined, color: Colors.orange.shade700),
-            const SizedBox(width: 10),
-            const Expanded(
+            Icon(Icons.warning_amber_outlined, color: _zeinaBurgundy),
+            SizedBox(width: 10),
+            Expanded(
               child: Text(
                 'لا توجد أرقام وأكواد متاحة.\n'
                 'أضف رقمًا وكودًا من "إدارة الأرقام" أولًا.',
@@ -2042,7 +2136,7 @@ class _MarketerDialogState extends State<_MarketerDialog> {
     }
 
     return DropdownButtonFormField<int>(
-      value: _selectedCodeId,
+      value: _selectedParentId ?? 0,
       isExpanded: true,
       decoration: const InputDecoration(
         labelText: 'رقم وكود المسوق',

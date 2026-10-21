@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
 import '../../database/database_helper.dart';
+import '../../widgets/sidebar.dart';
 
 class AuditLogsPage extends StatefulWidget {
   const AuditLogsPage({super.key});
@@ -12,8 +14,11 @@ class AuditLogsPage extends StatefulWidget {
 }
 
 class _AuditLogsPageState extends State<AuditLogsPage> {
-  static const Color _primary = Color(0xFF1E4FA3);
-  static const Color _background = Color(0xFFF5F7FB);
+  static const Color _primary = Color(0xFF722F37);
+  static const Color _gold = Color(0xFFC5A46D);
+  static const Color _background = Color(0xFFFAF7F2);
+  static const Color _surface = Colors.white;
+  static const Color _border = Color(0xFFE8DDD5);
 
   final TextEditingController _searchController = TextEditingController();
 
@@ -75,7 +80,13 @@ class _AuditLogsPageState extends State<AuditLogsPage> {
       setState(() => _isLoading = false);
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('حدث خطأ أثناء تحميل سجل التدقيق: $e')),
+        SnackBar(
+          content: Text(
+            'حدث خطأ أثناء تحميل سجل التدقيق: $e',
+            textAlign: TextAlign.right,
+          ),
+          backgroundColor: _primary,
+        ),
       );
     }
   }
@@ -191,14 +202,14 @@ class _AuditLogsPageState extends State<AuditLogsPage> {
     switch (action) {
       case 'create':
       case 'activate':
-        return const Color(0xFF2E7D32);
+        return _gold;
       case 'update':
         return _primary;
       case 'delete':
       case 'deactivate':
         return const Color(0xFFC62828);
       default:
-        return const Color(0xFF616161);
+        return const Color(0xFF806F69);
     }
   }
 
@@ -287,7 +298,6 @@ class _AuditLogsPageState extends State<AuditLogsPage> {
         key == 'receives_referral_commission' ||
         key == 'code_released') {
       final enabled = value == true || value.toString() == '1';
-
       return enabled ? 'نعم' : 'لا';
     }
 
@@ -307,6 +317,19 @@ class _AuditLogsPageState extends State<AuditLogsPage> {
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
       locale: const Locale('ar'),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: _primary,
+              onPrimary: Colors.white,
+              surface: _surface,
+              onSurface: _primary,
+            ),
+          ),
+          child: child!,
+        );
+      },
     );
 
     if (picked != null && mounted) {
@@ -332,8 +355,9 @@ class _AuditLogsPageState extends State<AuditLogsPage> {
       context: context,
       builder: (dialogContext) {
         return Directionality(
-          textDirection: TextDirection.rtl,
+          textDirection: ui.TextDirection.rtl,
           child: AlertDialog(
+            backgroundColor: _surface,
             title: const Row(
               children: [
                 Icon(Icons.manage_history_outlined, color: _primary),
@@ -341,7 +365,10 @@ class _AuditLogsPageState extends State<AuditLogsPage> {
                 Expanded(
                   child: Text(
                     'تفاصيل العملية',
-                    style: TextStyle(fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: _primary,
+                    ),
                   ),
                 ),
               ],
@@ -370,10 +397,13 @@ class _AuditLogsPageState extends State<AuditLogsPage> {
                       'التاريخ والوقت',
                       _formatDate(log['created_at']),
                     ),
-                    const Divider(height: 28),
+                    const Divider(height: 28, color: _border),
                     const Text(
                       'وصف العملية',
-                      style: TextStyle(fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: _primary,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Text(log['description']?.toString() ?? '-'),
@@ -387,7 +417,7 @@ class _AuditLogsPageState extends State<AuditLogsPage> {
                     _buildValuesSection(
                       title: 'البيانات بعد العملية',
                       values: newValues,
-                      color: const Color(0xFF2E7D32),
+                      color: _primary,
                     ),
                   ],
                 ),
@@ -395,6 +425,7 @@ class _AuditLogsPageState extends State<AuditLogsPage> {
             ),
             actions: [
               TextButton(
+                style: TextButton.styleFrom(foregroundColor: _primary),
                 onPressed: () => Navigator.pop(dialogContext),
                 child: const Text('إغلاق'),
               ),
@@ -503,9 +534,9 @@ class _AuditLogsPageState extends State<AuditLogsPage> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: _border),
       ),
       child: Column(
         children: [
@@ -513,13 +544,27 @@ class _AuditLogsPageState extends State<AuditLogsPage> {
             controller: _searchController,
             decoration: InputDecoration(
               hintText: 'بحث في وصف العملية أو رقم السجل أو العنصر',
-              prefixIcon: const Icon(Icons.search),
+              prefixIcon: const Icon(Icons.search, color: _primary),
               suffixIcon: _searchController.text.isNotEmpty
                   ? IconButton(
                       onPressed: _searchController.clear,
-                      icon: const Icon(Icons.clear),
+                      icon: const Icon(Icons.clear, color: _primary),
                     )
                   : null,
+              filled: true,
+              fillColor: _background,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: _border),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: _border),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: _gold, width: 1.5),
+              ),
             ),
           ),
           const SizedBox(height: 12),
@@ -532,7 +577,7 @@ class _AuditLogsPageState extends State<AuditLogsPage> {
                 isExpanded: true,
                 decoration: const InputDecoration(
                   labelText: 'نوع العملية',
-                  prefixIcon: Icon(Icons.tune_outlined),
+                  prefixIcon: Icon(Icons.tune_outlined, color: _primary),
                 ),
                 items: const [
                   DropdownMenuItem(value: 'all', child: Text('جميع العمليات')),
@@ -554,7 +599,7 @@ class _AuditLogsPageState extends State<AuditLogsPage> {
                 isExpanded: true,
                 decoration: const InputDecoration(
                   labelText: 'القسم',
-                  prefixIcon: Icon(Icons.category_outlined),
+                  prefixIcon: Icon(Icons.category_outlined, color: _primary),
                 ),
                 items: [
                   const DropdownMenuItem(
@@ -574,6 +619,14 @@ class _AuditLogsPageState extends State<AuditLogsPage> {
               );
 
               final dateFilter = OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _primary,
+                  side: const BorderSide(color: _gold),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 16,
+                  ),
+                ),
                 onPressed: _pickDate,
                 icon: const Icon(Icons.calendar_month_outlined),
                 label: Text(
@@ -613,6 +666,7 @@ class _AuditLogsPageState extends State<AuditLogsPage> {
           Align(
             alignment: Alignment.centerLeft,
             child: TextButton.icon(
+              style: TextButton.styleFrom(foregroundColor: _primary),
               onPressed: _clearFilters,
               icon: const Icon(Icons.filter_alt_off_outlined, size: 18),
               label: const Text('مسح الفلاتر'),
@@ -631,9 +685,9 @@ class _AuditLogsPageState extends State<AuditLogsPage> {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: _border),
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
@@ -667,6 +721,7 @@ class _AuditLogsPageState extends State<AuditLogsPage> {
                           style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.bold,
+                            color: _primary,
                           ),
                         ),
                         Container(
@@ -715,7 +770,7 @@ class _AuditLogsPageState extends State<AuditLogsPage> {
                 ),
               ),
               const SizedBox(width: 6),
-              const Icon(Icons.chevron_left, color: Colors.grey),
+              const Icon(Icons.chevron_left, color: _gold),
             ],
           ),
         ),
@@ -727,7 +782,7 @@ class _AuditLogsPageState extends State<AuditLogsPage> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 14, color: Colors.grey.shade600),
+        Icon(icon, size: 14, color: _gold),
         const SizedBox(width: 4),
         Text(
           value,
@@ -737,59 +792,36 @@ class _AuditLogsPageState extends State<AuditLogsPage> {
     );
   }
 
-  Widget _buildEmptyState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(30),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.history_toggle_off_outlined,
-              size: 65,
-              color: Colors.grey.shade400,
-            ),
-            const SizedBox(height: 15),
-            const Text(
-              'لا توجد عمليات لعرضها',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'ستظهر هنا العمليات المسجلة التي تطابق خيارات البحث والتصفية.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final filteredLogs = _filteredLogs;
 
     return Directionality(
-      textDirection: TextDirection.rtl,
+      textDirection: ui.TextDirection.rtl,
       child: Scaffold(
         backgroundColor: _background,
+        drawer: const Drawer(child: Sidebar()),
         appBar: AppBar(
           title: const Text(
             'سجل التدقيق',
             style: TextStyle(fontWeight: FontWeight.bold),
           ),
+          backgroundColor: _primary,
+          foregroundColor: Colors.white,
+          elevation: 0,
           actions: [
             IconButton(
               tooltip: 'تحديث السجل',
               onPressed: _isLoading ? null : _loadLogs,
               icon: const Icon(Icons.refresh_outlined),
             ),
+            const SizedBox(width: 6),
           ],
         ),
         body: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? const Center(child: CircularProgressIndicator(color: _primary))
             : RefreshIndicator(
+                color: _primary,
                 onRefresh: _loadLogs,
                 child: ListView(
                   physics: const AlwaysScrollableScrollPhysics(),
@@ -810,6 +842,7 @@ class _AuditLogsPageState extends State<AuditLogsPage> {
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
+                            color: _primary,
                           ),
                         ),
                         const Spacer(),
@@ -824,7 +857,43 @@ class _AuditLogsPageState extends State<AuditLogsPage> {
                     ),
                     const SizedBox(height: 12),
                     if (filteredLogs.isEmpty)
-                      SizedBox(height: 250, child: _buildEmptyState())
+                      const SizedBox(
+                        height: 250,
+                        child: Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(30),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.history_toggle_off_outlined,
+                                  size: 65,
+                                  color: _gold,
+                                ),
+                                SizedBox(height: 15),
+                                Text(
+                                  'لا توجد عمليات لعرضها',
+                                  style: TextStyle(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.bold,
+                                    color: _primary,
+                                  ),
+                                ),
+                                SizedBox(height: 8),
+                                Text(
+                                  'ستظهر هنا العمليات المسجلة التي تطابق '
+                                  'خيارات البحث والتصفية.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.black54,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      )
                     else
                       ...filteredLogs.map(_buildLogCard),
                   ],

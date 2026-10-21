@@ -10,6 +10,8 @@ import '../screens/sales/sales_page.dart';
 import '../screens/sales/sales_history_page.dart';
 import '../screens/reports/reports_page.dart';
 import '../screens/audit_logs/audit_logs_page.dart';
+import '../screens/archive/archive_page.dart';
+import '../screens/expenses/expenses_page.dart';
 
 class AppRoutes {
   static const String login = '/login';
@@ -22,6 +24,8 @@ class AppRoutes {
   static const String salesHistory = '/sales-history';
   static const String reports = '/reports';
   static const String auditLogs = '/audit-logs';
+  static const String archive = '/archive';
+  static const String expenses = '/expenses';
 
   static Map<String, WidgetBuilder> routes = {
     login: (context) => const LoginPage(),
@@ -34,5 +38,7 @@ class AppRoutes {
     salesHistory: (context) => const SalesHistoryPage(),
     reports: (context) => const ReportsPage(),
     auditLogs: (context) => const AuditLogsPage(),
+    archive: (context) => const ArchivePage(),
+    expenses: (context) => const ExpensesPage(),
   };
 }

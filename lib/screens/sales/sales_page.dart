@@ -24,13 +24,29 @@ class _SalesPageState extends State<SalesPage> {
     text: '1',
   );
   final TextEditingController _noteController = TextEditingController();
+  final TextEditingController _customerNameController = TextEditingController();
+  final TextEditingController _customerPhoneController =
+      TextEditingController();
+  final TextEditingController _deliveryController = TextEditingController(
+    text: '0',
+  );
+  final TextEditingController _initialPaymentController = TextEditingController(
+    text: '0',
+  );
+
+  String _paymentChoice = 'paid';
 
   bool _isLoading = true;
   bool _isSaving = false;
 
-  static const Color _primary = Color(0xFF1E4FA3);
-  static const Color _darkPrimary = Color(0xFF163D80);
-  static const Color _background = Color(0xFFF5F7FB);
+  // ألوان هوية زينة ZEINA.
+  static const Color _primary = Color(0xFF70263D);
+  static const Color _darkPrimary = Color(0xFF4D192B);
+  static const Color _background = Color(0xFFFAF5EC);
+  static const Color _gold = Color(0xFFC5A15A);
+  static const Color _lightBeige = Color(0xFFF2E7D5);
+  static const Color _borderColor = Color(0xFFE8DCCB);
+  static const Color _fieldBackground = Color(0xFFFFFCF7);
 
   double get _totalAmount =>
       _cart.fold(0, (total, item) => total + item.quantity * item.sellingPrice);
@@ -98,6 +114,11 @@ class _SalesPageState extends State<SalesPage> {
   double get _referralCommissionAmount =>
       _totalAmount > 0 ? _totalAmount * _referralCommissionRate / 100 : 0;
 
+  double get _deliveryFee =>
+      double.tryParse(_deliveryController.text.trim()) ?? 0;
+
+  double get _invoiceTotal => _totalAmount + _deliveryFee;
+
   @override
   void initState() {
     super.initState();
@@ -108,13 +129,16 @@ class _SalesPageState extends State<SalesPage> {
   void dispose() {
     _quantityController.dispose();
     _noteController.dispose();
+    _customerNameController.dispose();
+    _customerPhoneController.dispose();
+    _deliveryController.dispose();
+    _initialPaymentController.dispose();
     super.dispose();
   }
 
   Future<void> _loadData() async {
     try {
       final db = await _databaseHelper.database;
-
       final marketers = await _databaseHelper.getAllMarketers();
 
       final products = await db.query(
@@ -158,10 +182,11 @@ class _SalesPageState extends State<SalesPage> {
       ..showSnackBar(
         SnackBar(
           content: Text(message),
-          backgroundColor: isError
-              ? Colors.red.shade700
-              : Colors.green.shade700,
+          backgroundColor: isError ? _darkPrimary : Colors.green.shade700,
           behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
       );
   }
@@ -271,6 +296,49 @@ class _SalesPageState extends State<SalesPage> {
       return;
     }
 
+    final customerName = _customerNameController.text.trim();
+    final customerPhone = _customerPhoneController.text.trim();
+    final deliveryFee = double.tryParse(_deliveryController.text.trim());
+    final enteredPayment = double.tryParse(
+      _initialPaymentController.text.trim(),
+    );
+
+    if (customerName.isEmpty || customerPhone.isEmpty) {
+      _showMessage('اسم الزبون ورقم هاتفه مطلوبان', isError: true);
+      return;
+    }
+
+    if (deliveryFee == null || !deliveryFee.isFinite || deliveryFee < 0) {
+      _showMessage(
+        'أدخل قيمة توصيل صحيحة (صفر عند عدم وجود توصيل)',
+        isError: true,
+      );
+      return;
+    }
+
+    if (_paymentChoice == 'partial' &&
+        (enteredPayment == null ||
+            !enteredPayment.isFinite ||
+            enteredPayment <= 0 ||
+            enteredPayment >= _totalAmount + deliveryFee)) {
+      _showMessage(
+        'المقدم يجب أن يكون أكبر من صفر وأقل من الإجمالي النهائي',
+        isError: true,
+      );
+      return;
+    }
+
+    final initialPayment = _paymentChoice == 'paid'
+        ? _totalAmount + deliveryFee
+        : _paymentChoice == 'partial'
+        ? enteredPayment!
+        : 0.0;
+
+    if (_totalAmount + deliveryFee <= 0) {
+      _showMessage('يجب أن يكون إجمالي الفاتورة أكبر من صفر', isError: true);
+      return;
+    }
+
     setState(() => _isSaving = true);
 
     try {
@@ -290,7 +358,6 @@ class _SalesPageState extends State<SalesPage> {
         }
 
         final marketer = marketerRows.first;
-
         final commissionRate =
             (marketer['commission_rate'] as num?)?.toDouble() ?? 0;
 
@@ -343,7 +410,6 @@ class _SalesPageState extends State<SalesPage> {
 
         double totalAmount = 0;
         double totalCost = 0;
-
         final verifiedItems = <Map<String, dynamic>>[];
 
         for (final cartItem in _cart) {
@@ -413,12 +479,12 @@ class _SalesPageState extends State<SalesPage> {
 
         final totalProfit = totalAmount - totalCost;
 
-        // العمولة الشخصية: من الربح الموجب فقط.
+        // عمولة المسوق الشخصية من الربح الموجب فقط.
         final commissionAmount = totalProfit > 0
             ? totalProfit * commissionRate / 100
             : 0.0;
 
-        // عمولة التبعية: من إجمالي البيع قبل خصم التكلفة.
+        // عمولة التبعية من إجمالي البيع.
         final referralCommissionAmount = referralCommissionMarketerId != null
             ? totalAmount * referralCommissionRate / 100
             : 0.0;
@@ -434,7 +500,30 @@ class _SalesPageState extends State<SalesPage> {
               ? null
               : _noteController.text.trim(),
           'created_at': now,
+          'customer_name': customerName,
+          'customer_phone': customerPhone,
+          'delivery_fee': deliveryFee,
+          'payment_status':
+              initialPayment >= totalAmount + deliveryFee - 0.000001
+              ? 'paid'
+              : initialPayment > 0
+              ? 'partial'
+              : 'unpaid',
+          'payment_updated_at': now,
+          'fully_paid_at':
+              initialPayment >= totalAmount + deliveryFee - 0.000001
+              ? now
+              : null,
         });
+
+        if (initialPayment > 0) {
+          await txn.insert('sale_payments', {
+            'sale_id': id,
+            'amount': initialPayment,
+            'note': 'الدفعة الأولى',
+            'created_at': now,
+          });
+        }
 
         for (final item in verifiedItems) {
           await txn.insert('sale_items', {
@@ -483,6 +572,11 @@ class _SalesPageState extends State<SalesPage> {
         _selectedProductId = null;
         _quantityController.text = '1';
         _noteController.clear();
+        _customerNameController.clear();
+        _customerPhoneController.clear();
+        _deliveryController.text = '0';
+        _initialPaymentController.text = '0';
+        _paymentChoice = 'paid';
       });
 
       await _loadData();
@@ -523,11 +617,17 @@ class _SalesPageState extends State<SalesPage> {
           backgroundColor: _darkPrimary,
           foregroundColor: Colors.white,
           elevation: 0,
+          iconTheme: const IconThemeData(color: Colors.white),
         ),
-        drawer: const Drawer(width: 280, child: Sidebar()),
+        drawer: const Drawer(
+          width: 280,
+          backgroundColor: _background,
+          child: Sidebar(),
+        ),
         body: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? const Center(child: CircularProgressIndicator(color: _primary))
             : RefreshIndicator(
+                color: _primary,
                 onRefresh: _loadData,
                 child: LayoutBuilder(
                   builder: (context, constraints) {
@@ -582,6 +682,8 @@ class _SalesPageState extends State<SalesPage> {
         _buildProductCard(),
         const SizedBox(height: 20),
         _buildCartCard(),
+        const SizedBox(height: 20),
+        _buildCustomerPaymentCard(),
       ],
     );
   }
@@ -593,8 +695,9 @@ class _SalesPageState extends State<SalesPage> {
           width: 50,
           height: 50,
           decoration: BoxDecoration(
-            color: _primary.withValues(alpha: 0.10),
+            color: _lightBeige,
             borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: _borderColor),
           ),
           child: const Icon(
             Icons.point_of_sale_outlined,
@@ -609,7 +712,11 @@ class _SalesPageState extends State<SalesPage> {
             children: [
               Text(
                 'إنشاء فاتورة جديدة',
-                style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  fontSize: 21,
+                  fontWeight: FontWeight.bold,
+                  color: _darkPrimary,
+                ),
               ),
               SizedBox(height: 5),
               Text(
@@ -634,7 +741,7 @@ class _SalesPageState extends State<SalesPage> {
         children: [
           const Text(
             'المسوق المسؤول *',
-            style: TextStyle(fontWeight: FontWeight.w600),
+            style: TextStyle(fontWeight: FontWeight.w600, color: _darkPrimary),
           ),
           const SizedBox(height: 8),
           DropdownButtonFormField<int>(
@@ -671,6 +778,7 @@ class _SalesPageState extends State<SalesPage> {
               decoration: BoxDecoration(
                 color: _background,
                 borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: _borderColor),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -716,7 +824,7 @@ class _SalesPageState extends State<SalesPage> {
             const SizedBox(height: 8),
             const Text(
               'لا يوجد مسوقون نشطون. أضف مسوقًا أولًا.',
-              style: TextStyle(color: Colors.red),
+              style: TextStyle(color: _primary),
             ),
           ],
         ],
@@ -736,7 +844,10 @@ class _SalesPageState extends State<SalesPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text('المنتج *', style: TextStyle(fontWeight: FontWeight.w600)),
+          const Text(
+            'المنتج *',
+            style: TextStyle(fontWeight: FontWeight.w600, color: _darkPrimary),
+          ),
           const SizedBox(height: 8),
           DropdownButtonFormField<int>(
             value: _selectedProductId,
@@ -805,7 +916,7 @@ class _SalesPageState extends State<SalesPage> {
             const SizedBox(height: 8),
             const Text(
               'لا توجد منتجات نشطة لإضافتها إلى الفاتورة.',
-              style: TextStyle(color: Colors.red),
+              style: TextStyle(color: _primary),
             ),
           ],
         ],
@@ -825,11 +936,7 @@ class _SalesPageState extends State<SalesPage> {
               padding: EdgeInsets.symmetric(vertical: 28),
               child: Column(
                 children: [
-                  Icon(
-                    Icons.shopping_cart_outlined,
-                    size: 42,
-                    color: Colors.blueGrey,
-                  ),
+                  Icon(Icons.shopping_cart_outlined, size: 42, color: _gold),
                   SizedBox(height: 10),
                   Text(
                     'لم تتم إضافة منتجات بعد',
@@ -843,7 +950,7 @@ class _SalesPageState extends State<SalesPage> {
           const SizedBox(height: 12),
           const Text(
             'ملاحظات الفاتورة (اختياري)',
-            style: TextStyle(fontWeight: FontWeight.w600),
+            style: TextStyle(fontWeight: FontWeight.w600, color: _darkPrimary),
           ),
           const SizedBox(height: 8),
           TextField(
@@ -853,7 +960,107 @@ class _SalesPageState extends State<SalesPage> {
             maxLength: 300,
             decoration: _inputDecoration('أضف ملاحظة إن وجدت'),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCustomerPaymentCard() {
+    return _buildCard(
+      title: 'بيانات الزبون والسداد',
+      icon: Icons.person_pin_outlined,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TextField(
+            controller: _customerNameController,
+            enabled: !_isSaving,
+            decoration: _inputDecoration('اسم الزبون *'),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _customerPhoneController,
+            enabled: !_isSaving,
+            keyboardType: TextInputType.phone,
+            decoration: _inputDecoration('رقم الزبون *'),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _deliveryController,
+            enabled: !_isSaving,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            onChanged: (_) => setState(() {}),
+            decoration: _inputDecoration('قيمة التوصيل (0 بدون توصيل)'),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: _lightBeige,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: _borderColor),
+            ),
+            child: Text(
+              'الإجمالي مع التوصيل: ${_formatMoney(_invoiceTotal)}',
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                color: _darkPrimary,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            value: _paymentChoice,
+            isExpanded: true,
+            decoration: _inputDecoration('طريقة السداد'),
+            items: const [
+              DropdownMenuItem(
+                value: 'paid',
+                child: Text('تم دفع المبلغ كاملًا'),
+              ),
+              DropdownMenuItem(
+                value: 'partial',
+                child: Text('دفع مقدم والباقي عند الاستلام'),
+              ),
+              DropdownMenuItem(
+                value: 'unpaid',
+                child: Text('المبلغ كاملًا عند الاستلام'),
+              ),
+            ],
+            onChanged: _isSaving
+                ? null
+                : (value) => setState(() => _paymentChoice = value ?? 'paid'),
+          ),
+          if (_paymentChoice == 'partial') ...[
+            const SizedBox(height: 12),
+            TextField(
+              controller: _initialPaymentController,
+              enabled: !_isSaving,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              onChanged: (_) => setState(() {}),
+              decoration: _inputDecoration('المبلغ المقدم *'),
+            ),
+          ],
+          const SizedBox(height: 12),
+          Text(
+            'المتبقي: ${_formatMoney(_paymentChoice == 'paid'
+                ? 0
+                : _paymentChoice == 'unpaid'
+                ? _invoiceTotal
+                : (_invoiceTotal - (double.tryParse(_initialPaymentController.text.trim()) ?? 0)).clamp(0, double.infinity).toDouble())}',
+            style: const TextStyle(
+              color: _darkPrimary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           const SizedBox(height: 8),
+          const Text(
+            'الفواتير غير المسددة ستظهر في سجل المبيعات حتى اكتمال التحصيل.',
+            style: TextStyle(fontSize: 12, color: Colors.blueGrey),
+          ),
+          const SizedBox(height: 12),
           SizedBox(
             height: 50,
             child: ElevatedButton.icon(
@@ -889,9 +1096,9 @@ class _SalesPageState extends State<SalesPage> {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: _background,
+        color: _fieldBackground,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE4E9F2)),
+        border: Border.all(color: _borderColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -901,7 +1108,10 @@ class _SalesPageState extends State<SalesPage> {
               Expanded(
                 child: Text(
                   item.name,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: _darkPrimary,
+                  ),
                 ),
               ),
               IconButton(
@@ -910,7 +1120,7 @@ class _SalesPageState extends State<SalesPage> {
                 onPressed: _isSaving
                     ? null
                     : () => setState(() => _cart.remove(item)),
-                icon: const Icon(Icons.delete_outline, color: Colors.red),
+                icon: const Icon(Icons.delete_outline, color: _primary),
               ),
             ],
           ),
@@ -943,16 +1153,19 @@ class _SalesPageState extends State<SalesPage> {
               IconButton(
                 visualDensity: VisualDensity.compact,
                 onPressed: _isSaving ? null : () => _changeQuantity(item, -1),
-                icon: const Icon(Icons.remove_circle_outline),
+                icon: const Icon(Icons.remove_circle_outline, color: _primary),
               ),
               Text(
                 _formatNumber(item.quantity),
-                style: const TextStyle(fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: _darkPrimary,
+                ),
               ),
               IconButton(
                 visualDensity: VisualDensity.compact,
                 onPressed: _isSaving ? null : () => _changeQuantity(item, 1),
-                icon: const Icon(Icons.add_circle_outline),
+                icon: const Icon(Icons.add_circle_outline, color: _primary),
               ),
               const Spacer(),
               Text(
@@ -983,7 +1196,7 @@ class _SalesPageState extends State<SalesPage> {
               _cart.fold<double>(0, (sum, item) => sum + item.quantity),
             ),
           ),
-          const Divider(height: 24),
+          const Divider(height: 24, color: _borderColor),
           _summaryRow(
             'إجمالي البيع',
             _formatMoney(_totalAmount),
@@ -993,7 +1206,9 @@ class _SalesPageState extends State<SalesPage> {
           _summaryRow(
             'الربح قبل العمولات',
             _formatMoney(_totalProfit),
-            valueColor: _totalProfit >= 0 ? Colors.green.shade700 : Colors.red,
+            valueColor: _totalProfit >= 0
+                ? Colors.green.shade700
+                : Colors.red.shade700,
           ),
           _summaryRow(
             'عمولة المسوق (${_formatNumber(_commissionRate)}%)',
@@ -1003,16 +1218,16 @@ class _SalesPageState extends State<SalesPage> {
             _summaryRow(
               'عمولة المسوق الرئيسي (${_formatNumber(_referralCommissionRate)}%)',
               _formatMoney(_referralCommissionAmount),
-              valueColor: Colors.deepPurple,
+              valueColor: _primary,
             ),
-          const Divider(height: 24),
+          const Divider(height: 24, color: _borderColor),
           _summaryRow(
             'الربح بعد العمولات',
             _formatMoney(totalAfterCommissions),
             emphasized: true,
             valueColor: totalAfterCommissions >= 0
                 ? Colors.green.shade700
-                : Colors.red,
+                : Colors.red.shade700,
           ),
           const SizedBox(height: 12),
           const Text(
@@ -1043,7 +1258,7 @@ class _SalesPageState extends State<SalesPage> {
               style: TextStyle(
                 fontSize: emphasized ? 14 : 12,
                 fontWeight: emphasized ? FontWeight.bold : FontWeight.normal,
-                color: emphasized ? Colors.black87 : Colors.blueGrey.shade700,
+                color: emphasized ? _darkPrimary : Colors.blueGrey.shade700,
               ),
             ),
           ),
@@ -1071,10 +1286,10 @@ class _SalesPageState extends State<SalesPage> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE8ECF3)),
+        border: Border.all(color: _borderColor),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.025),
+            color: _darkPrimary.withValues(alpha: 0.04),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -1085,7 +1300,15 @@ class _SalesPageState extends State<SalesPage> {
         children: [
           Row(
             children: [
-              Icon(icon, color: _primary, size: 22),
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: _lightBeige,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: _primary, size: 21),
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
@@ -1093,6 +1316,7 @@ class _SalesPageState extends State<SalesPage> {
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
+                    color: _darkPrimary,
                   ),
                 ),
               ),
@@ -1108,16 +1332,17 @@ class _SalesPageState extends State<SalesPage> {
   InputDecoration _inputDecoration(String hint) {
     return InputDecoration(
       hintText: hint,
+      hintStyle: const TextStyle(color: Colors.blueGrey),
       filled: true,
-      fillColor: const Color(0xFFFAFBFD),
+      fillColor: _fieldBackground,
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: Color(0xFFDCE3EF)),
+        borderSide: const BorderSide(color: _borderColor),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: Color(0xFFDCE3EF)),
+        borderSide: const BorderSide(color: _borderColor),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
